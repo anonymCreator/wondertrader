@@ -1,4 +1,4 @@
-/*!
+ï»¿/*!
  * \file WtBtRunner.cpp
  * \project	WonderTrader
  *
@@ -28,7 +28,7 @@
 #ifdef _MSC_VER
 #include "../Common/mdump.h"
 #include <boost/filesystem.hpp>
- //Õâ¸öÖ÷ÒªÊÇ¸øMiniDumperÓÃµÄ
+ //è¿™ä¸ªä¸»è¦æ˜¯ç»™MiniDumperç”¨çš„
 const char* getModuleName()
 {
 	static char MODULE_NAME[250] = { 0 };
@@ -85,14 +85,9 @@ WtBtRunner::WtBtRunner()
 	, _running(false)
 	, _async(false)
 {
-#if _WIN32
-#pragma message("Signal hooks disabled in WIN32")
-#else
-#pragma message("Signal hooks enabled in UNIX")
 	install_signal_hooks([](const char* message) {
 		WTSLogger::error(message);
 	});
-#endif
 }
 
 
@@ -270,7 +265,8 @@ void WtBtRunner::registerHftCallbacks(FuncStraInitCallback cbInit, FuncStraTickC
 	WTSLogger::info("Callbacks of HFT engine registration done");
 }
 
-uint32_t WtBtRunner::initCtaMocker(const char* name, int32_t slippage /* = 0 */, bool hook /* = false */, bool persistData /* = true */, bool bIncremental /* = false */)
+uint32_t WtBtRunner::initCtaMocker(const char* name, int32_t slippage /* = 0 */, bool hook /* = false */, 
+	bool persistData /* = true */, bool bIncremental /* = false */, bool isRatioSlp /* = false */)
 {
 	if(_cta_mocker)
 	{
@@ -278,7 +274,7 @@ uint32_t WtBtRunner::initCtaMocker(const char* name, int32_t slippage /* = 0 */,
 		_cta_mocker = NULL;
 	}
 
-	_cta_mocker = new ExpCtaMocker(&_replayer, name, slippage, persistData, &_notifier);
+	_cta_mocker = new ExpCtaMocker(&_replayer, name, slippage, persistData, &_notifier, isRatioSlp);
 	if (bIncremental)
 	{
 		_cta_mocker->load_incremental_data(name);
@@ -302,7 +298,8 @@ uint32_t WtBtRunner::initHftMocker(const char* name, bool hook/* = false*/)
 	return _hft_mocker->id();
 }
 
-uint32_t WtBtRunner::initSelMocker(const char* name, uint32_t date, uint32_t time, const char* period, const char* trdtpl /* = "CHINA" */, const char* session /* = "TRADING" */, int32_t slippage/* = 0*/)
+uint32_t WtBtRunner::initSelMocker(const char* name, uint32_t date, uint32_t time, const char* period, 
+	const char* trdtpl /* = "CHINA" */, const char* session /* = "TRADING" */, int32_t slippage /* = 0 */, bool isRatioSlp /* = false */)
 {
 	if (_sel_mocker)
 	{
@@ -310,7 +307,7 @@ uint32_t WtBtRunner::initSelMocker(const char* name, uint32_t date, uint32_t tim
 		_sel_mocker = NULL;
 	}
 
-	_sel_mocker = new ExpSelMocker(&_replayer, name, slippage);
+	_sel_mocker = new ExpSelMocker(&_replayer, name, slippage, isRatioSlp);
 	_replayer.register_sink(_sel_mocker, name);
 
 	_replayer.register_task(_sel_mocker->id(), date, time, period, trdtpl, session);
@@ -466,7 +463,7 @@ void WtBtRunner::config(const char* cfgFile, bool isFile /* = true */)
 		return;
 	}
 
-	//³õÊ¼»¯ÊÂ¼þÍÆËÍÆ÷
+	//åˆå§‹åŒ–äº‹ä»¶æŽ¨é€å™¨
 	initEvtNotifier(_cfg->get("notifier"));
 
 	_replayer.init(_cfg->get("replayer"), &_notifier, _ext_fnl_bar_loader != NULL ? this : NULL);

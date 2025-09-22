@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "IndexWorker.h"
 #include "../Share/threadpool.hpp"
 #include <vector>
@@ -32,6 +32,6 @@ private:
 	typedef std::shared_ptr<boost::threadpool::pool> ThreadPoolPtr;
 	ThreadPoolPtr	_pool;
 
-	faster_hashset<LongKey>	_subbed;
+	wt_hashset<std::string>	_subbed;
 };
 

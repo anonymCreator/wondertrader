@@ -1,4 +1,4 @@
-/*!
+﻿/*!
  * \file WtDataManager.cpp
  * \project	WonderTrader
  *
@@ -97,6 +97,10 @@ bool WtDataManager::init(WTSVariant* cfg, WtDtRunner* runner)
 		_hot_mgr = &_runner->getHotMgr();
 	}
 
+	_align_by_section = cfg->getBoolean("align_by_section");
+
+	WTSLogger::info("Resampled bars will be aligned by section: {}", _align_by_section ? "yes" : " no");
+
 	return initStore(cfg->get("store"));
 }
 
@@ -155,14 +159,14 @@ WTSKlineSlice* WtDataManager::get_skline_slice_by_date(const char* stdCode, uint
 {
 	std::string key = StrUtil::printf("%s-%u-s%u", stdCode, uDate, secs);
 
-	//ֻ�зǻ������ڵĻ��������Ĳ���
+	//只有非基础周期的会进到下面的步骤
 	WTSSessionInfo* sInfo = get_session_info(stdCode, true);
 	BarCache& barCache = _bars_cache[key];
 	barCache._period = KP_Tick;
 	barCache._times = secs;
 	if (barCache._bars == NULL)
 	{
-		//��һ�ν�ȫ�����ݻ��浽�ڴ���
+		//第一次将全部数据缓存到内存中
 		WTSTickSlice* ticks = _reader->readTickSliceByDate(stdCode, uDate);
 		if (ticks != NULL)
 		{
@@ -199,7 +203,7 @@ WTSKlineSlice* WtDataManager::get_kline_slice_by_range(const char* stdCode, WTSK
 		return _reader->readKlineSliceByRange(stdCode, period, stime, etime);
 	}
 
-	//ֻ�зǻ������ڵĻ��������Ĳ���
+	//只有非基础周期的会进到下面的步骤
 	WTSSessionInfo* sInfo = get_session_info(stdCode, true);
 	std::string key = StrUtil::printf("%s-%u-%u", stdCode, period, times);
 	BarCache& barCache = _bars_cache[key];
@@ -207,15 +211,15 @@ WTSKlineSlice* WtDataManager::get_kline_slice_by_range(const char* stdCode, WTSK
 	barCache._times = times;
 	if(barCache._bars == NULL)
 	{
-		//��һ�ν�ȫ�����ݻ��浽�ڴ���
+		//第一次将全部数据缓存到内存中
 		WTSKlineSlice* rawData = _reader->readKlineSliceByCount(stdCode, period, UINT_MAX, 0);
 		if (rawData != NULL)
 		{
 			WTSKlineData* kData = g_dataFact.extractKlineData(rawData, period, times, sInfo, false);
 			barCache._bars = kData;
 
-			//������Σ���ɾ�����һ��K��
-			//����ͨ���պϱ���жϣ���Ϊ��ȡ�Ļ������ڿ��ܱ���û�бպ�
+			//不管如何，都删除最后一条K线
+			//不能通过闭合标记判断，因为读取的基础周期可能本身没有闭合
 			if (barCache._bars->size() > 0)
 			{
 				auto& bars = barCache._bars->getDataRef();
@@ -239,7 +243,7 @@ WTSKlineSlice* WtDataManager::get_kline_slice_by_range(const char* stdCode, WTSK
 	}
 	else
 	{
-		//��������������
+		//后面则增量更新
 		WTSKlineSlice* rawData = _reader->readKlineSliceByRange(stdCode, period, barCache._last_bartime, 0);
 		if (rawData != NULL)
 		{
@@ -251,15 +255,15 @@ WTSKlineSlice* WtDataManager::get_kline_slice_by_range(const char* stdCode, WTSK
 				else
 					barTime = 199000000000 + rawData->at(0)->time;
 				
-				//ֻ��ʱ���ϴμ�¼�����һ��ʱ�䣬�ſ������ڸ���K��
+				//只有时间上次记录的最后一条时间，才可以用于更新K线
 				if(barTime <= barCache._last_bartime)
 					continue;
 
-				g_dataFact.updateKlineData(barCache._bars, rawData->at(idx), sInfo);
+				g_dataFact.updateKlineData(barCache._bars, rawData->at(idx), sInfo, _align_by_section);
 			}
 
-			//������Σ���ɾ�����һ��K��
-			//����ͨ���պϱ���жϣ���Ϊ��ȡ�Ļ������ڿ��ܱ���û�бպ�
+			//不管如何，都删除最后一条K线
+			//不能通过闭合标记判断，因为读取的基础周期可能本身没有闭合
 			if(barCache._bars->size() > 0)
 			{
 				auto& bars = barCache._bars->getDataRef();
@@ -279,7 +283,7 @@ WTSKlineSlice* WtDataManager::get_kline_slice_by_range(const char* stdCode, WTSK
 		}
 	}
 
-	//��󵽻����ж�λ
+	//最后到缓存中定位
 	bool isDay = period == KP_DAY;
 	uint32_t rDate, rTime, lDate, lTime;
 	rDate = (uint32_t)(etime / 10000);
@@ -337,7 +341,7 @@ WTSKlineSlice* WtDataManager::get_kline_slice_by_count(const char* stdCode, WTSK
 		return _reader->readKlineSliceByCount(stdCode, period, count, etime);
 	}
 
-	//ֻ�зǻ������ڵĻ��������Ĳ���
+	//只有非基础周期的会进到下面的步骤
 	WTSSessionInfo* sInfo = get_session_info(stdCode, true);
 	std::string key = StrUtil::printf("%s-%u-%u", stdCode, period, times);
 	BarCache& barCache = _bars_cache[key];
@@ -348,7 +352,7 @@ WTSKlineSlice* WtDataManager::get_kline_slice_by_count(const char* stdCode, WTSK
 
 	if (barCache._bars == NULL)
 	{
-		//��һ�ν�ȫ�����ݻ��浽�ڴ���
+		//第一次将全部数据缓存到内存中
 		WTSLogger::info("Caching all {} bars of {}...", tag, stdCode);
 		WTSKlineSlice* rawData = _reader->readKlineSliceByCount(stdCode, period, UINT_MAX, 0);
 		if (rawData != NULL)
@@ -357,8 +361,8 @@ WTSKlineSlice* WtDataManager::get_kline_slice_by_count(const char* stdCode, WTSK
 			WTSKlineData* kData = g_dataFact.extractKlineData(rawData, period, times, sInfo, true);
 			barCache._bars = kData;
 
-			//����������ߣ�Ҫ�������һ��K���Ƿ�պϵ����
-			//������ñ��صķ������������ʱ��������һ��K�ߵ�ʱ�䣬����Ϊ�����պ���
+			//如果不是日线，要考虑最后一条K线是否闭合的情况
+			//这里采用保守的方案，如果本地时间大于最后一条K线的时间，则认为真正闭合了
 			if (period != KP_DAY)
 			{
 				uint64_t last_bartime = 0;
@@ -390,7 +394,7 @@ WTSKlineSlice* WtDataManager::get_kline_slice_by_count(const char* stdCode, WTSK
 	}
 	else
 	{
-		//��������������
+		//后面则增量更新
 		WTSKlineSlice* rawData = _reader->readKlineSliceByRange(stdCode, period, barCache._last_bartime, 0);
 		if (rawData != NULL)
 		{
@@ -403,15 +407,15 @@ WTSKlineSlice* WtDataManager::get_kline_slice_by_count(const char* stdCode, WTSK
 				else
 					barTime = 199000000000 + rawData->at(0)->time;
 
-				//ֻ��ʱ���ϴμ�¼�����һ��ʱ�䣬�ſ������ڸ���K��
+				//只有时间上次记录的最后一条时间，才可以用于更新K线
 				if (barTime <= barCache._last_bartime)
 					continue;
 
-				g_dataFact.updateKlineData(barCache._bars, rawData->at(idx), sInfo);
+				g_dataFact.updateKlineData(barCache._bars, rawData->at(idx), sInfo, _align_by_section);
 			}
 
-			//����������ߣ�Ҫ�������һ��K���Ƿ�պϵ����
-			//������ñ��صķ������������ʱ��������һ��K�ߵ�ʱ�䣬����Ϊ�����պ���
+			//如果不是日线，要考虑最后一条K线是否闭合的情况
+			//这里采用保守的方案，如果本地时间大于最后一条K线的时间，则认为真正闭合了
 			if (period != KP_DAY)
 			{
 				uint64_t last_bartime = 0;
@@ -438,7 +442,7 @@ WTSKlineSlice* WtDataManager::get_kline_slice_by_count(const char* stdCode, WTSK
 		}
 	}
 
-	//��󵽻����ж�λ
+	//最后到缓存中定位
 	bool isDay = period == KP_DAY;
 	uint32_t rDate, rTime;
 	rDate = (uint32_t)(etime / 10000);
@@ -534,7 +538,7 @@ void WtDataManager::subscribe_bar(const char* stdCode, WTSKlinePeriod period, ui
 	}
 	else
 	{
-		//ֻ�зǻ������ڵĻ��������Ĳ���
+		//只有非基础周期的会进到下面的步骤
 		WTSSessionInfo* sInfo = get_session_info(stdCode, true);
 		WTSKlineSlice* rawData = _reader->readKlineSliceByCount(stdCode, period, 10*times, 0);
 		if (rawData != NULL)
@@ -578,7 +582,7 @@ void WtDataManager::update_bars(const char* stdCode, WTSTickData* newTick)
 			sInfo = newTick->getContractInfo()->getCommInfo()->getSessionInfo();
 		else
 			sInfo = get_session_info(kData->code(), true);
-		g_dataFact.updateKlineData(kData, newTick, sInfo);
+		g_dataFact.updateKlineData(kData, newTick, sInfo, _align_by_section);
 		WTSBarStruct* lastBar = kData->at(-1);
 
 		std::string speriod;
@@ -598,4 +602,16 @@ void WtDataManager::update_bars(const char* stdCode, WTSTickData* newTick)
 
 		_runner->trigger_bar(stdCode, speriod.c_str(), lastBar);
 	}
+}
+
+void WtDataManager::clear_cache()
+{
+	if (_reader == NULL)
+	{
+		WTSLogger::warn("DataReader not initialized, clearing canceled");
+		return;
+	}
+
+	_reader->clearCache();
+	WTSLogger::warn("All cache cleared");
 }

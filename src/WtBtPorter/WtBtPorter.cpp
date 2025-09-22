@@ -1,4 +1,4 @@
-/*!
+ï»¿/*!
  * \file WtBtPorter.cpp
  * \project	WonderTrader
  *
@@ -164,9 +164,9 @@ void write_log(WtUInt32 level, const char* message, const char* catName)
 	}
 }
 
-CtxHandler init_cta_mocker(const char* name, int slippage/* = 0*/, bool hook/* = false*/, bool persistData/* = true*/, bool bIncremental/* = false*/)
+CtxHandler init_cta_mocker(const char* name, int slippage/* = 0*/, bool hook/* = false*/, bool persistData/* = true*/, bool bIncremental/* = false*/, bool bRatioSlp/* = false*/)
 {
-	return getRunner().initCtaMocker(name, slippage, hook, persistData, bIncremental);
+	return getRunner().initCtaMocker(name, slippage, hook, persistData, bIncremental, bRatioSlp);
 }
 
 CtxHandler init_hft_mocker(const char* name, bool hook/* = false*/)
@@ -174,12 +174,12 @@ CtxHandler init_hft_mocker(const char* name, bool hook/* = false*/)
 	return getRunner().initHftMocker(name, hook);
 }
 
-CtxHandler init_sel_mocker(const char* name, WtUInt32 date, WtUInt32 time, const char* period, const char* trdtpl/* = "CHINA"*/, const char* session/* = "TRADING"*/, int slippage/* = 0*/)
+CtxHandler init_sel_mocker(const char* name, WtUInt32 date, WtUInt32 time, const char* period, const char* trdtpl/* = "CHINA"*/, const char* session/* = "TRADING"*/, int slippage/* = 0*/, bool bRatioSlp/* = false*/)
 {
-	return getRunner().initSelMocker(name, date, time, period, trdtpl, session, slippage);
+	return getRunner().initSelMocker(name, date, time, period, trdtpl, session, slippage, bRatioSlp);
 }
 
-#pragma region "CTA²ßÂÔ½Ó¿Ú"
+#pragma region "CTAç­–ç•¥æ¥å£"
 void cta_enter_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
 {
 	CtaMocker* ctx = getRunner().cta_mocker();
@@ -485,9 +485,18 @@ void cta_sub_ticks(CtxHandler cHandle, const char* stdCode)
 	ctx->stra_sub_ticks(stdCode);
 }
 
+void cta_sub_bar_events(CtxHandler cHandle, const char* stdCode, const char* period)
+{
+	CtaMocker* ctx = getRunner().cta_mocker();
+	if (ctx == NULL)
+		return;
+
+	ctx->stra_sub_bar_events(stdCode, period);
+}
+
 bool cta_step(CtxHandler cHandle)
 {
-	//Ö»ÓĞÒì²½Ä£Ê½²ÅÓĞÒâÒå
+	//åªæœ‰å¼‚æ­¥æ¨¡å¼æ‰æœ‰æ„ä¹‰
 	if (!getRunner().isAsync())
 		return false;
 
@@ -551,9 +560,9 @@ bool cta_set_index_value(CtxHandler cHandle, const char* idxName, const char* li
 	return ctx->set_index_value(idxName, lineName, val);
 }
 
-#pragma endregion "CTA²ßÂÔ½Ó¿Ú"
+#pragma endregion "CTAç­–ç•¥æ¥å£"
 
-#pragma region "SEL²ßÂÔ½Ó¿Ú"
+#pragma region "SELç­–ç•¥æ¥å£"
 void sel_save_userdata(CtxHandler cHandle, const char* key, const char* val)
 {
 	SelMocker* ctx = getRunner().sel_mocker();
@@ -672,7 +681,7 @@ void sel_set_position(CtxHandler cHandle, const char* stdCode, double qty, const
 	if (ctx == NULL)
 		return;
 
-	//¶àÒò×ÓÒıÇæ,ÏŞ¼ÛºÍÖ¹¼Û¶¼ÎŞĞ§
+	//å¤šå› å­å¼•æ“,é™ä»·å’Œæ­¢ä»·éƒ½æ— æ•ˆ
 	ctx->stra_set_position(stdCode, qty, userTag);
 }
 
@@ -714,9 +723,118 @@ void sel_sub_ticks(CtxHandler cHandle, const char* stdCode)
 	ctx->stra_sub_ticks(stdCode);
 }
 
-#pragma endregion "SEL²ßÂÔ½Ó¿Ú"
+double sel_get_day_price(const char* stdCode, int flag)
+{
+	return getRunner().replayer().get_day_price(stdCode, flag);
+}
 
-#pragma region "HFT²ßÂÔ½Ó¿Ú"
+WtUInt32 sel_get_tdate()
+{
+	return getRunner().replayer().get_trading_date();
+}
+
+double sel_get_fund_data(CtxHandler cHandle, int flag)
+{
+	SelMocker* ctx = getRunner().sel_mocker();
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_fund_data(flag);
+}
+
+double sel_get_position_profit(CtxHandler cHandle, const char* stdCode)
+{
+	SelMocker* ctx = getRunner().sel_mocker();
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_position_profit(stdCode);
+}
+
+WtUInt64 sel_get_detail_entertime(CtxHandler cHandle, const char* stdCode, const char* openTag)
+{
+	SelMocker* ctx = getRunner().sel_mocker();
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_detail_entertime(stdCode, openTag);
+}
+
+double sel_get_detail_cost(CtxHandler cHandle, const char* stdCode, const char* openTag)
+{
+	SelMocker* ctx = getRunner().sel_mocker();
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_detail_cost(stdCode, openTag);
+}
+
+double sel_get_detail_profit(CtxHandler cHandle, const char* stdCode, const char* openTag, int flag)
+{
+	SelMocker* ctx = getRunner().sel_mocker();
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_detail_profit(stdCode, openTag, flag);
+}
+
+double sel_get_position_avgpx(CtxHandler cHandle, const char* stdCode)
+{
+	SelMocker* ctx = getRunner().sel_mocker();
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_position_avgpx(stdCode);
+}
+
+WtUInt64 sel_get_first_entertime(CtxHandler cHandle, const char* stdCode)
+{
+	SelMocker* ctx = getRunner().sel_mocker();
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_first_entertime(stdCode);
+}
+
+WtUInt64 sel_get_last_entertime(CtxHandler cHandle, const char* stdCode)
+{
+	SelMocker* ctx = getRunner().sel_mocker();
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_last_entertime(stdCode);
+}
+
+WtUInt64 sel_get_last_exittime(CtxHandler cHandle, const char* stdCode)
+{
+	SelMocker* ctx = getRunner().sel_mocker();
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_last_exittime(stdCode);
+}
+
+double sel_get_last_enterprice(CtxHandler cHandle, const char* stdCode)
+{
+	SelMocker* ctx = getRunner().sel_mocker();
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_last_enterprice(stdCode);
+}
+
+WtString sel_get_last_entertag(CtxHandler cHandle, const char* stdCode)
+{
+	SelMocker* ctx = getRunner().sel_mocker();
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_last_entertag(stdCode);
+}
+
+#pragma endregion "SELç­–ç•¥æ¥å£"
+
+#pragma region "HFTç­–ç•¥æ¥å£"
 double hft_get_position(CtxHandler cHandle, const char* stdCode, bool bOnlyValid)
 {
 	HftMocker* mocker = getRunner().hft_mocker();
@@ -1062,7 +1180,7 @@ WtString hft_load_userdata(CtxHandler cHandle, const char* key, const char* defV
 
 void hft_step(CtxHandler cHandle)
 {
-	//Ö»ÓĞÒì²½Ä£Ê½²ÅÓĞÒâÒå
+	//åªæœ‰å¼‚æ­¥æ¨¡å¼æ‰æœ‰æ„ä¹‰
 	if (!getRunner().isAsync())
 		return;
 
@@ -1072,4 +1190,4 @@ void hft_step(CtxHandler cHandle)
 
 	mocker->step_tick();
 }
-#pragma endregion "HFT²ßÂÔ½Ó¿Ú"
+#pragma endregion "HFTç­–ç•¥æ¥å£"

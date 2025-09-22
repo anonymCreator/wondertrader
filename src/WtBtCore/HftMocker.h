@@ -1,4 +1,4 @@
-/*!
+ï»¿/*!
  * \file HftMocker.h
  * \project	WonderTrader
  *
@@ -116,7 +116,7 @@ public:
 	virtual WTSTickData* stra_get_last_tick(const char* stdCode) override;
 
 	/*
-	 *	»ñÈ¡·ÖÔÂºÏÔ¼´úÂë
+	 *	è·å–åˆ†æœˆåˆçº¦ä»£ç 
 	 */
 	virtual std::string		stra_get_rawcode(const char* stdCode) override;
 
@@ -188,9 +188,9 @@ private:
 
 	bool			_use_newpx;
 	uint32_t		_error_rate;
-	bool			_match_this_tick;	//ÊÇ·ñÔÚµ±Ç°tick´éºÏ
+	bool			_match_this_tick;	//æ˜¯å¦åœ¨å½“å‰tickæ’®åˆ
 
-	typedef faster_hashmap<std::string, double> PriceMap;
+	typedef wt_hashmap<std::string, double> PriceMap;
 	PriceMap		_price_map;
 
 
@@ -234,7 +234,7 @@ private:
 		
 		uint32_t	_localid;
 
-		bool	_proced_after_placed;	//ÏÂµ¥ºóÊÇ·ñ´¦Àí¹ı			
+		bool	_proced_after_placed;	//ä¸‹å•åæ˜¯å¦å¤„ç†è¿‡			
 
 		_OrderInfo()
 		{
@@ -254,15 +254,15 @@ private:
 
 	} OrderInfo;
 	typedef std::shared_ptr<OrderInfo> OrderInfoPtr;
-	typedef faster_hashmap<uint32_t, OrderInfoPtr> Orders;
+	typedef wt_hashmap<uint32_t, OrderInfoPtr> Orders;
 	StdRecurMutex	_mtx_ords;
 	Orders			_orders;
 
 	typedef WTSHashMap<std::string> CommodityMap;
 	CommodityMap*	_commodities;
 
-	//ÓÃ»§Êı¾İ
-	typedef faster_hashmap<std::string, std::string> StringHashMap;
+	//ç”¨æˆ·æ•°æ®
+	typedef wt_hashmap<std::string, std::string> StringHashMap;
 	StringHashMap	_user_datas;
 	bool			_ud_modified;
 
@@ -303,7 +303,7 @@ private:
 
 		inline double valid() const { return _volume - _frozen; }
 	} PosInfo;
-	typedef faster_hashmap<std::string, PosInfo> PositionMap;
+	typedef wt_hashmap<std::string, PosInfo> PositionMap;
 	PositionMap		_pos_map;
 
 	std::stringstream	_trade_logs;
@@ -331,12 +331,12 @@ protected:
 
 	StdUniqueMutex	_mtx_calc;
 	StdCondVariable	_cond_calc;
-	bool			_has_hook;		//ÕâÊÇÈËÎª¿ØÖÆÊÇ·ñÆôÓÃ¹³×Ó
-	bool			_hook_valid;	//ÕâÊÇ¸ù¾İÊÇ·ñÊÇÒì²½»Ø²âÄ£Ê½¶øÈ·¶¨¹³×ÓÊÇ·ñ¿ÉÓÃ
-	std::atomic<bool>	_resumed;	//ÁÙÊ±±äÁ¿£¬ÓÃÓÚ¿ØÖÆ×´Ì¬
+	bool			_has_hook;		//è¿™æ˜¯äººä¸ºæ§åˆ¶æ˜¯å¦å¯ç”¨é’©å­
+	bool			_hook_valid;	//è¿™æ˜¯æ ¹æ®æ˜¯å¦æ˜¯å¼‚æ­¥å›æµ‹æ¨¡å¼è€Œç¡®å®šé’©å­æ˜¯å¦å¯ç”¨
+	std::atomic<bool>	_resumed;	//ä¸´æ—¶å˜é‡ï¼Œç”¨äºæ§åˆ¶çŠ¶æ€
 
-	//tick¶©ÔÄÁĞ±í
-	faster_hashset<std::string> _tick_subs;
+	//tickè®¢é˜…åˆ—è¡¨
+	wt_hashset<std::string> _tick_subs;
 
 	typedef WTSHashMap<std::string>	TickCache;
 	TickCache*	_ticks;

@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include "IExecCommand.h"
 #include "../Includes/ExecuteDefs.h"
 #include "../Share/DLLHelper.hpp"
@@ -8,9 +8,9 @@
 NS_WTP_BEGIN
 
 //////////////////////////////////////////////////////////////////////////
-//Ö´ĞĞµ¥Ôª·â×°
-//ÒòÎªÖ´ĞĞµ¥ÔªÊÇdllÀï´´½¨µÄ, Èç¹û²»·â×°µÄ»°, Ö±½Ódelete¿ÉÄÜ»áÓĞÎÊÌâ
-//ËùÒÔÒª°Ñ¹¤³§Ö¸ÕëÒ»Æğ·â×°µ½ÕâÀï, Ö±½Óµ÷ÓÃ¹¤³§ÊµÀıµÄdeleteUnit·½·¨ÊÍ·ÅÖ´ĞĞµ¥Ôª
+//æ‰§è¡Œå•å…ƒå°è£…
+//å› ä¸ºæ‰§è¡Œå•å…ƒæ˜¯dllé‡Œåˆ›å»ºçš„, å¦‚æœä¸å°è£…çš„è¯, ç›´æ¥deleteå¯èƒ½ä¼šæœ‰é—®é¢˜
+//æ‰€ä»¥è¦æŠŠå·¥å‚æŒ‡é’ˆä¸€èµ·å°è£…åˆ°è¿™é‡Œ, ç›´æ¥è°ƒç”¨å·¥å‚å®ä¾‹çš„deleteUnitæ–¹æ³•é‡Šæ”¾æ‰§è¡Œå•å…ƒ
 class ExeUnitWrapper
 {
 public:
@@ -32,10 +32,10 @@ private:
 };
 
 typedef std::shared_ptr<ExeUnitWrapper>	ExecuteUnitPtr;
-typedef faster_hashmap<LongKey, ExecuteUnitPtr> ExecuteUnitMap;
+typedef wt_hashmap<std::string, ExecuteUnitPtr> ExecuteUnitMap;
 
 //////////////////////////////////////////////////////////////////////////
-//Ö´ĞĞÆ÷¹¤³§Àà
+//æ‰§è¡Œå™¨å·¥å‚ç±»
 class WtExecuterFactory : private boost::noncopyable
 {
 public:
@@ -46,9 +46,11 @@ public:
 
 	ExecuteUnitPtr createExeUnit(const char* name);
 	ExecuteUnitPtr createDiffExeUnit(const char* name);
+	ExecuteUnitPtr createArbiExeUnit(const char* name);
 
 	ExecuteUnitPtr createExeUnit(const char* factname, const char* unitname);
 	ExecuteUnitPtr createDiffExeUnit(const char* factname, const char* unitname);
+	ExecuteUnitPtr createArbiExeUnit(const char* factname, const char* unitname);
 
 private:
 	typedef struct _ExeFactInfo
@@ -59,7 +61,7 @@ private:
 		FuncCreateExeFact	_creator;
 		FuncDeleteExeFact	_remover;
 	} ExeFactInfo;
-	typedef faster_hashmap<LongKey, ExeFactInfo> ExeFactMap;
+	typedef wt_hashmap<std::string, ExeFactInfo> ExeFactMap;
 
 	ExeFactMap	_factories;
 };

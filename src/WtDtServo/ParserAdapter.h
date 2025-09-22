@@ -1,11 +1,11 @@
-/*!
+ï»¿/*!
  * \file ParserAdapter.h
  * \project	WonderTrader
  *
  * \author Wesley
  * \date 2020/03/30
  * 
- * \brief ĞĞÇé½âÎöÄ£¿éÊÊÅäÀà¶¨Òå
+ * \brief è¡Œæƒ…è§£ææ¨¡å—é€‚é…ç±»å®šä¹‰
  */
 #pragma once
 #include <set>
@@ -62,7 +62,7 @@ private:
 
 	bool				_stopped;
 
-	typedef faster_hashset<std::string>	ExchgFilter;
+	typedef wt_hashset<std::string>	ExchgFilter;
 	ExchgFilter			_exchg_filter;
 	ExchgFilter			_code_filter;
 	WTSVariant*			_cfg;
@@ -70,7 +70,7 @@ private:
 };
 
 typedef std::shared_ptr<ParserAdapter>	ParserAdapterPtr;
-typedef faster_hashmap<std::string, ParserAdapterPtr>	ParserAdapterMap;
+typedef wt_hashmap<std::string, ParserAdapterPtr>	ParserAdapterMap;
 
 class ParserAdapterMgr : private boost::noncopyable
 {

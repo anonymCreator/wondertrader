@@ -1,4 +1,4 @@
-#include "HisDataMgr.h"
+﻿#include "HisDataMgr.h"
 #include "WtHelper.h"
 #include "../Share/DLLHelper.hpp"
 #include "../Includes/WTSVariant.hpp"
@@ -69,6 +69,51 @@ bool HisDataMgr::load_raw_ticks(const char* exchg, const char* code, uint32_t uD
 
 	std::string buffer;
 	bool bSucc = _reader->read_raw_ticks(exchg, code, uDate, buffer);
+	if (bSucc)
+		cb(buffer);
+	return bSucc;
+}
+
+bool HisDataMgr::load_raw_trans(const char* exchg, const char* code, uint32_t uDate, FuncLoadDataCallback cb)
+{
+	if (_reader == NULL)
+	{
+		WTSLogger::log_raw(LL_ERROR, "Backtest Data Reader not initialized");
+		return false;
+	}
+
+	std::string buffer;
+	bool bSucc = _reader->read_raw_transactions(exchg, code, uDate, buffer);
+	if (bSucc)
+		cb(buffer);
+	return bSucc;
+}
+
+bool HisDataMgr::load_raw_ordque(const char* exchg, const char* code, uint32_t uDate, FuncLoadDataCallback cb)
+{
+	if (_reader == NULL)
+	{
+		WTSLogger::log_raw(LL_ERROR, "Backtest Data Reader not initialized");
+		return false;
+	}
+
+	std::string buffer;
+	bool bSucc = _reader->read_raw_order_queues(exchg, code, uDate, buffer);
+	if (bSucc)
+		cb(buffer);
+	return bSucc;
+}
+
+bool HisDataMgr::load_raw_orddtl(const char* exchg, const char* code, uint32_t uDate, FuncLoadDataCallback cb)
+{
+	if (_reader == NULL)
+	{
+		WTSLogger::log_raw(LL_ERROR, "Backtest Data Reader not initialized");
+		return false;
+	}
+
+	std::string buffer;
+	bool bSucc = _reader->read_raw_order_details(exchg, code, uDate, buffer);
 	if (bSucc)
 		cb(buffer);
 	return bSucc;

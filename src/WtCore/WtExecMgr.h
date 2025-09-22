@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <functional>
 #include "WtLocalExecuter.h"
 
@@ -21,21 +21,21 @@ public:
 
 	void	enum_executer(EnumExecuterCb cb);
 
-	void	set_positions(faster_hashmap<LongKey, double> target_pos);
+	void	set_positions(wt_hashmap<std::string, double> target_pos);
 	void	handle_pos_change(const char* stdCode, double targetPos, double diffPos, const char* execid = "ALL");
 	void	handle_tick(const char* stdCode, WTSTickData* curTick);
 
 	/*
-	 *	¼ÓÔØÂ·ÓÉ¹æÔò
+	 *	åŠ è½½è·¯ç”±è§„åˆ™
 	 */
 	bool	load_router_rules(WTSVariant* config);
 
 	/*
 	 *	
 	 */
-	inline const faster_hashset<ShortKey>& get_route(const char* strategyid)
+	inline const wt_hashset<std::string>& get_route(const char* strategyid)
 	{
-		static faster_hashset<ShortKey> ALL_EXECUTERS;
+		static wt_hashset<std::string> ALL_EXECUTERS;
 		if (ALL_EXECUTERS.empty())
 			ALL_EXECUTERS.insert("ALL");
 
@@ -50,7 +50,7 @@ public:
 	}
 
 	/*
-	 *	Çå³ı»º´æµÄÄ¿±ê²ÖÎ»
+	 *	æ¸…é™¤ç¼“å­˜çš„ç›®æ ‡ä»“ä½
 	 */
 	inline void	clear_cached_targets()
 	{
@@ -58,30 +58,30 @@ public:
 	}
 
 	/*
-	 *	½«Ä¿±ê²ÖÎ»¼ÓÈë»º´æ
-	 *	@stdCode	ºÏÔ¼´úÂë
-	 *	@targetPos	Ä¿±ê²ÖÎ»
-	 *	@execid		Ö´ĞĞÆ÷ID
+	 *	å°†ç›®æ ‡ä»“ä½åŠ å…¥ç¼“å­˜
+	 *	@stdCode	åˆçº¦ä»£ç 
+	 *	@targetPos	ç›®æ ‡ä»“ä½
+	 *	@execid		æ‰§è¡Œå™¨ID
 	 */
 	void	add_target_to_cache(const char* stdCode, double targetPos, const char* execid = "ALL");
 
 	/*
-	 *	Ìá½»»º´æµÄÄ¿±êÍ·´ç
-	 *	@scale	·ç¿ØÏµÊı
+	 *	æäº¤ç¼“å­˜çš„ç›®æ ‡å¤´å¯¸
+	 *	@scale	é£æ§ç³»æ•°
 	 */
 	void	commit_cached_targets(double scale = 1.0);
 
 private:
-	typedef faster_hashmap<ShortKey, ExecCmdPtr> ExecuterMap;
+	typedef wt_hashmap<std::string, ExecCmdPtr> ExecuterMap;
 	ExecuterMap		_executers;
 	WtFilterMgr*	_filter_mgr;
 
-	typedef faster_hashmap<LongKey, double> TargetsMap;
-	faster_hashmap<ShortKey, TargetsMap>	_all_cached_targets;
+	typedef wt_hashmap<std::string, double> TargetsMap;
+	wt_hashmap<std::string, TargetsMap>	_all_cached_targets;
 
-	typedef faster_hashset<ShortKey>	ExecuterSet;
-	faster_hashmap<ShortKey, ExecuterSet>	_router_rules;
+	typedef wt_hashset<std::string>	ExecuterSet;
+	wt_hashmap<std::string, ExecuterSet>	_router_rules;
 
-	faster_hashset<ShortKey>	_routed_executers;
+	wt_hashset<std::string>	_routed_executers;
 };
 NS_WTP_END

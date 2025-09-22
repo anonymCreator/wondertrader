@@ -1,4 +1,4 @@
-/*!
+Ôªø/*!
  * \file WtCtaEngine.h
  * \project	WonderTrader
  *
@@ -9,6 +9,7 @@
  */
 #pragma once
 #include "../Includes/ICtaStraCtx.h"
+#include "../Share/threadpool.hpp"
 #include "WtExecMgr.h"
 #include "WtEngine.h"
 
@@ -26,8 +27,8 @@ public:
 
 public:
 	//////////////////////////////////////////////////////////////////////////
-	//WtEngineΩ”ø⁄
-	virtual void handle_push_quote(WTSTickData* newTick, uint32_t hotFlag) override;
+	//WtEngineÊé•Âè£
+	virtual void handle_push_quote(WTSTickData* newTick) override;
 
 	virtual void on_tick(const char* stdCode, WTSTickData* curTick) override;
 
@@ -37,7 +38,7 @@ public:
 	virtual void on_session_begin() override;
 	virtual void on_session_end() override;
 
-	virtual void run(bool bAsync = false) override;
+	virtual void run() override;
 
 	virtual void init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDtMgr* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier) override;
 
@@ -45,7 +46,7 @@ public:
 	virtual uint32_t transTimeToMin(uint32_t uTime) override;
 
 	///////////////////////////////////////////////////////////////////////////
-	//IExecuterStub Ω”ø⁄
+	//IExecuterStub Êé•Âè£
 	virtual uint64_t get_real_time() override;
 	virtual WTSCommodityInfo* get_comm_info(const char* stdCode) override;
 	virtual WTSSessionInfo* get_sess_info(const char* stdCode) override;
@@ -79,7 +80,7 @@ public:
 	void notify_trade(const char* straId, const char* stdCode, bool isLong, bool isOpen, uint64_t curTime, double price, const char* userTag);
 
 private:
-	typedef faster_hashmap<uint32_t, CtaContextPtr> ContextMap;
+	typedef wt_hashmap<uint32_t, CtaContextPtr> ContextMap;
 	ContextMap		_ctx_map;
 
 	WtCtaRtTicker*	_tm_ticker;
@@ -87,6 +88,9 @@ private:
 	WtExecuterMgr	_exec_mgr;
 
 	WTSVariant*		_cfg;
+
+	typedef std::shared_ptr<boost::threadpool::pool> ThreadPoolPtr;
+	ThreadPoolPtr		_pool;
 };
 
 NS_WTP_END

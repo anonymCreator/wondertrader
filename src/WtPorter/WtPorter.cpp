@@ -1,4 +1,4 @@
-/*!
+ï»¿/*!
  * \file WtPorter.cpp
  * \project	WonderTrader
  *
@@ -178,7 +178,7 @@ bool reg_exe_factories(const char* factFolder)
 }
 
 
-#pragma region "CTA²ßÂÔ½Ó¿Ú"
+#pragma region "CTAç­–ç•¥æ¥å£"
 
 CtxHandler create_cta_context(const char* name, int slippage)
 {
@@ -492,6 +492,15 @@ void cta_sub_ticks(CtxHandler cHandle, const char* stdCode)
 	ctx->stra_sub_ticks(stdCode);
 }
 
+void cta_sub_bar_events(CtxHandler cHandle, const char* stdCode, const char* period)
+{
+	CtaContextPtr ctx = getRunner().getCtaContext(cHandle);
+	if (ctx == NULL)
+		return;
+
+	ctx->stra_sub_bar_events(stdCode, period);
+}
+
 void cta_set_chart_kline(CtxHandler cHandle, const char* stdCode, const char* period)
 {
 	CtaContextPtr ctx = getRunner().getCtaContext(cHandle);
@@ -548,7 +557,7 @@ bool cta_set_index_value(CtxHandler cHandle, const char* idxName, const char* li
 
 #pragma endregion
 
-#pragma region "¶àÒò×Ó²ßÂÔ½Ó¿Ú"
+#pragma region "å¤šå› å­ç­–ç•¥æ¥å£"
 CtxHandler create_sel_context(const char* name, uint32_t date, uint32_t time, const char* period, const char* trdtpl/* = "CHINA"*/, const char* session/* = "TRADING"*/, int32_t slippage/* = 0*/)
 {
 	return getRunner().createSelContext(name, date, time, period, slippage, trdtpl, session);
@@ -673,7 +682,7 @@ void sel_set_position(CtxHandler cHandle, const char* stdCode, double qty, const
 	if (ctx == NULL)
 		return;
 
-	//¶àÒò×ÓÒıÇæ,ÏŞ¼ÛºÍÖ¹¼Û¶¼ÎŞĞ§
+	//å¤šå› å­å¼•æ“,é™ä»·å’Œæ­¢ä»·éƒ½æ— æ•ˆ
 	ctx->stra_set_position(stdCode, qty, userTag);
 }
 
@@ -714,9 +723,118 @@ void sel_sub_ticks(CtxHandler cHandle, const char* stdCode)
 
 	ctx->stra_sub_ticks(stdCode);
 }
+
+double sel_get_day_price(const char* stdCode, int flag)
+{
+	return getRunner().getEngine()->get_day_price(stdCode, flag);
+}
+
+WtUInt32 sel_get_tdate()
+{
+	return getRunner().getEngine()->get_trading_date();
+}
+
+double sel_get_fund_data(CtxHandler cHandle, int flag)
+{
+	SelContextPtr ctx = getRunner().getSelContext(cHandle);
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_fund_data(flag);
+}
+
+double sel_get_position_profit(CtxHandler cHandle, const char* stdCode)
+{
+	SelContextPtr ctx = getRunner().getSelContext(cHandle);
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_position_profit(stdCode);
+}
+
+WtUInt64 sel_get_detail_entertime(CtxHandler cHandle, const char* stdCode, const char* openTag)
+{
+	SelContextPtr ctx = getRunner().getSelContext(cHandle);
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_detail_entertime(stdCode, openTag);
+}
+
+double sel_get_detail_cost(CtxHandler cHandle, const char* stdCode, const char* openTag)
+{
+	SelContextPtr ctx = getRunner().getSelContext(cHandle);
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_detail_cost(stdCode, openTag);
+}
+
+double sel_get_detail_profit(CtxHandler cHandle, const char* stdCode, const char* openTag, int flag)
+{
+	SelContextPtr ctx = getRunner().getSelContext(cHandle);
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_detail_profit(stdCode, openTag, flag);
+}
+
+double sel_get_position_avgpx(CtxHandler cHandle, const char* stdCode)
+{
+	SelContextPtr ctx = getRunner().getSelContext(cHandle);
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_position_avgpx(stdCode);
+}
+
+WtUInt64 sel_get_first_entertime(CtxHandler cHandle, const char* stdCode)
+{
+	SelContextPtr ctx = getRunner().getSelContext(cHandle);
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_first_entertime(stdCode);
+}
+
+WtUInt64 sel_get_last_entertime(CtxHandler cHandle, const char* stdCode)
+{
+	SelContextPtr ctx = getRunner().getSelContext(cHandle);
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_last_entertime(stdCode);
+}
+
+WtUInt64 sel_get_last_exittime(CtxHandler cHandle, const char* stdCode)
+{
+	SelContextPtr ctx = getRunner().getSelContext(cHandle);
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_last_exittime(stdCode);
+}
+
+double sel_get_last_enterprice(CtxHandler cHandle, const char* stdCode)
+{
+	SelContextPtr ctx = getRunner().getSelContext(cHandle);
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_last_enterprice(stdCode);
+}
+
+WtString sel_get_last_entertag(CtxHandler cHandle, const char* stdCode)
+{
+	SelContextPtr ctx = getRunner().getSelContext(cHandle);
+	if (ctx == NULL)
+		return 0;
+
+	return ctx->stra_get_last_entertag(stdCode);
+}
 #pragma endregion
 
-#pragma region "HFT²ßÂÔ½Ó¿Ú"
+#pragma region "HFTç­–ç•¥æ¥å£"
 CtxHandler create_hft_context(const char* name, const char* trader, bool agent, int32_t slippage/* = 0*/)
 {
 	return getRunner().createHftContext(name, trader, agent, slippage);
@@ -1065,11 +1183,11 @@ WtString hft_load_userdata(CtxHandler cHandle, const char* key, const char* defV
 
 	return ctx->stra_load_user_data(key, defVal);
 }
-#pragma endregion "HFT²ßÂÔ½Ó¿Ú"
+#pragma endregion "HFTç­–ç•¥æ¥å£"
 
-#pragma region "À©Õ¹Parser½Ó¿Ú"
+#pragma region "æ‰©å±•Parseræ¥å£"
 void parser_push_quote(const char* id, WTSTickStruct* curTick, WtUInt32 uProcFlag)
 {
 	getRunner().on_ext_parser_quote(id, curTick, uProcFlag);
 }
-#pragma endregion "À©Õ¹Parser½Ó¿Ú"
+#pragma endregion "æ‰©å±•Parseræ¥å£"

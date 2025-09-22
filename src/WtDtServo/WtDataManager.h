@@ -1,4 +1,4 @@
-/*!
+ï»¿/*!
  * \file WtDataManager.h
  * \project	WonderTrader
  *
@@ -47,17 +47,17 @@ private:
 //IRdmDtReaderSink
 public:
 	/*
-	 *	@brief	»ñÈ¡»ù´¡Êı¾İ¹ÜÀí½Ó¿ÚÖ¸Õë
+	 *	@brief	è·å–åŸºç¡€æ•°æ®ç®¡ç†æ¥å£æŒ‡é’ˆ
 	 */
 	virtual IBaseDataMgr*	get_basedata_mgr() override { return _bd_mgr; }
 
 	/*
-	 *	@brief	»ñÈ¡Ö÷Á¦ÇĞ»»¹æÔò¹ÜÀí½Ó¿ÚÖ¸Õë
+	 *	@brief	è·å–ä¸»åŠ›åˆ‡æ¢è§„åˆ™ç®¡ç†æ¥å£æŒ‡é’ˆ
 	 */
 	virtual IHotMgr*		get_hot_mgr() override { return _hot_mgr; }
 
 	/*
-	 *	@brief	Êä³öÊı¾İ¶ÁÈ¡Ä£¿éµÄÈÕÖ¾
+	 *	@brief	è¾“å‡ºæ•°æ®è¯»å–æ¨¡å—çš„æ—¥å¿—
 	 */
 	virtual void			reader_log(WTSLogLevel ll, const char* message) override;
 
@@ -79,15 +79,17 @@ public:
 	WTSKlineSlice* get_kline_slice_by_count(const char* stdCode, WTSKlinePeriod period, uint32_t times, uint32_t count, uint64_t etime = 0);
 
 	/*
-	 *	»ñÈ¡¸´È¨Òò×Ó
-	 *	@stdCode	ºÏÔ¼´úÂë
-	 *	@commInfo	Æ·ÖÖĞÅÏ¢
+	 *	è·å–å¤æƒå› å­
+	 *	@stdCode	åˆçº¦ä»£ç 
+	 *	@commInfo	å“ç§ä¿¡æ¯
 	 */
 	double	get_exright_factor(const char* stdCode, WTSCommodityInfo* commInfo = NULL);
 
 	void	subscribe_bar(const char* stdCode, WTSKlinePeriod period, uint32_t times);
 	void	clear_subbed_bars();
 	void	update_bars(const char* stdCode, WTSTickData* newTick);
+
+	void	clear_cache();
 
 private:
 	IRdmDtReader*			_reader;
@@ -96,8 +98,9 @@ private:
 	IBaseDataMgr*	_bd_mgr;
 	IHotMgr*		_hot_mgr;
 	WtDtRunner*		_runner;
+	bool			_align_by_section;
 
-	//KÏß»º´æ
+	//Kçº¿ç¼“å­˜
 	typedef struct _BarCache
 	{
 		WTSKlineData*	_bars;
@@ -107,10 +110,10 @@ private:
 
 		_BarCache():_last_bartime(0),_period(KP_DAY),_times(1),_bars(NULL){}
 	} BarCache;
-	typedef faster_hashmap<std::string, BarCache>	BarCacheMap;
+	typedef wt_hashmap<std::string, BarCache>	BarCacheMap;
 	BarCacheMap	_bars_cache;
 
-	typedef WTSHashMap<LongKey>	RtBarMap;
+	typedef WTSHashMap<std::string>	RtBarMap;
 	RtBarMap*		_rt_bars;
 	StdUniqueMutex	_mtx_rtbars;
 };

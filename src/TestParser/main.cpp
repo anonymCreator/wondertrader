@@ -1,4 +1,4 @@
-#include <iostream>
+﻿#include <iostream>
 #include <boost/filesystem.hpp>
 
 #include "../Includes/IParserApi.h"
@@ -103,7 +103,7 @@ public:
 
 	virtual void handleQuote(WTSTickData *quote, uint32_t procFlag) override
 	{
-		//WTSLogger::info("{}@{}.{}, price:{}, voume:{}", quote->code(), quote->actiondate(), quote->actiontime(), quote->price(), quote->totalvolume());
+		WTSLogger::info("{}@{}.{}, price:{}, voume:{}", quote->code(), quote->actiondate(), quote->actiontime(), quote->price(), quote->totalvolume());
 	}
 
 	virtual void handleSymbolList(const WTSArray* aySymbols) override

@@ -1,4 +1,4 @@
-/*!
+ï»¿/*!
  * \file WtDtRunner.h
  * \project	WonderTrader
  *
@@ -44,6 +44,8 @@ public:
 	void	sub_tick(const char* stdCode, bool bReplace, bool bInner = false);
 	void	sub_bar(const char* stdCode, const char* period);
 
+	void	clear_cache();
+
 public:
 	WTSKlineSlice*	get_bars_by_range(const char* stdCode, const char* period, uint64_t beginTime, uint64_t endTime = 0);
 
@@ -63,7 +65,6 @@ private:
 	void	initDataMgr(WTSVariant* config);
 	void	initParsers(WTSVariant* cfg);
 
-
 private:
 	FuncOnTickCallback	_cb_tick;
 	FuncOnBarCallback	_cb_bar;
@@ -77,11 +78,11 @@ private:
 	bool			_is_inited;
 
 	typedef std::set<uint32_t> SubFlags;
-	typedef faster_hashmap<LongKey, SubFlags>	StraSubMap;
-	StraSubMap		_tick_sub_map;	//tickÊı¾İ¶©ÔÄ±í
+	typedef wt_hashmap<std::string, SubFlags>	StraSubMap;
+	StraSubMap		_tick_sub_map;	//tickæ•°æ®è®¢é˜…è¡¨
 	StdUniqueMutex	_mtx_subs;
 
-	StraSubMap		_tick_innersub_map;	//tickÊı¾İ¶©ÔÄ±í
+	StraSubMap		_tick_innersub_map;	//tickæ•°æ®è®¢é˜…è¡¨
 	StdUniqueMutex	_mtx_innersubs;
 };
 

@@ -1,4 +1,4 @@
-/*!
+﻿/*!
  * \file WtDtPorter.cpp
  * \project	WonderTrader
  *
@@ -232,4 +232,9 @@ void subscribe_tick(const char* stdCode, bool bReplace)
 void subscribe_bar(const char* stdCode, const char* period)
 {
 	getRunner().sub_bar(stdCode, period);
+}
+
+void clear_cache()
+{
+	getRunner().clear_cache();
 }

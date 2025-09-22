@@ -1,4 +1,4 @@
-/*!
+ï»¿/*!
  * \file WtRtRunner.h
  * \project	WonderTrader
  *
@@ -25,6 +25,7 @@
 #include "../WtCore/WtLocalExecuter.h"
 #include "../WtCore/WtDiffExecuter.h"
 #include "../WtCore/WtDistExecuter.h"
+#include "../WtCore/WtArbiExecuter.h"
 #include "../WtCore/TraderAdapter.h"
 #include "../WtCore/ParserAdapter.h"
 #include "../WtCore/WtDtMgr.h"
@@ -42,9 +43,9 @@ USING_NS_WTP;
 
 typedef enum tagEngineType
 {
-	ET_CTA = 999,	//CTAÒıÇæ	
-	ET_HFT,			//¸ßÆµÒıÇæ
-	ET_SEL			//Ñ¡¹ÉÒıÇæ
+	ET_CTA = 999,	//CTAå¼•æ“	
+	ET_HFT,			//é«˜é¢‘å¼•æ“
+	ET_SEL			//é€‰è‚¡å¼•æ“
 } EngineType;
 
 class WtRtRunner : public IEngineEvtListener, public ILogHandler, public IHisDataLoader
@@ -70,7 +71,7 @@ public:
 
 public:
 	/*
-	 *	³õÊ¼»¯
+	 *	åˆå§‹åŒ–
 	 */
 	bool init(const char* logCfg = "logcfg.prop", bool isFile = true, const char* genDir = "");
 
@@ -119,7 +120,7 @@ public:
 	virtual void handleLogAppend(WTSLogLevel ll, const char* msg) override;
 
 //////////////////////////////////////////////////////////////////////////
-//À©Õ¹Parser
+//æ‰©å±•Parser
 public:
 	void parser_init(const char* id);
 	void parser_connect(const char* id);
@@ -132,7 +133,7 @@ public:
 
 
 //////////////////////////////////////////////////////////////////////////
-//À©Õ¹Executer
+//æ‰©å±•Executer
 public:
 	void executer_set_position(const char* id, const char* stdCode, double target);
 	void executer_init(const char* id);
@@ -256,6 +257,7 @@ private:
 
 	bool				_is_hft;
 	bool				_is_sel;
+	bool				_to_exit;
 
 	FuncLoadFnlBars		_ext_fnl_bar_loader;
 	FuncLoadRawBars		_ext_raw_bar_loader;

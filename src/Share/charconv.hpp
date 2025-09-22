@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <stdlib.h>
 #include <string>
 #ifdef _MSC_VER
@@ -55,12 +55,12 @@ public :
 #else
 			iconv_t cd;
 			t_string = new char[dst_len];
-
-			cd = iconv_open("gbk", "utf8");
+			char* p = t_string;
+			cd = iconv_open("gb2312", "utf-8");
 			if (cd != 0)
 			{
 				memset(t_string, 0, dst_len);
-				iconv(cd, (char**)&utf8_string, &string_len, &t_string, &dst_len);
+				iconv(cd, (char**)&utf8_string, &string_len, &p, &dst_len);
 				iconv_close(cd);
 				t_string[dst_len] = '\0';
 			}
@@ -135,7 +135,7 @@ public :
 			needFree = true;
 
 			std::size_t string_len = strlen(t_string);
-			std::size_t dst_len = string_len * 3 + 1;
+			std::size_t dst_len = string_len * 5;
 #ifdef _MSC_VER		
 
 			// Convert to Unicode if not already in unicode.
@@ -153,14 +153,13 @@ public :
 #else
 			iconv_t cd;
 			utf8_string = new char[dst_len];
-
-			cd = iconv_open("utf8", "gbk");
+			char* p = utf8_string;
+			cd = iconv_open("utf-8", "gb2312");
 			if (cd != 0)
 			{
 				memset(utf8_string, 0, dst_len);
-				iconv(cd, (char**)&t_string, &string_len, &utf8_string, &dst_len);
+				iconv(cd, (char**)&t_string, &string_len, &p, &dst_len);
 				iconv_close(cd);
-				utf8_string[dst_len] = '\0';
 			}
 #endif
 		}
@@ -263,12 +262,12 @@ public:
 					hexStr += src[i+1];
 					hexStr += src[i+2];
 					hex = strtol(hexStr.c_str(), 0, 16);
-					//×ÖÄ¸ºÍÊý×Ö[0-9a-zA-Z]¡¢Ò»Ð©ÌØÊâ·ûºÅ[$-_.+!*'(),] ¡¢ÒÔ¼°Ä³Ð©±£Áô×Ö[$&+,/:;=?@]  
-					//¿ÉÒÔ²»¾­¹ý±àÂëÖ±½ÓÓÃÓÚURL  
+					//å­—æ¯å’Œæ•°å­—[0-9a-zA-Z]ã€ä¸€äº›ç‰¹æ®Šç¬¦å·[$-_.+!*'(),] ã€ä»¥åŠæŸäº›ä¿ç•™å­—[$&+,/:;=?@]  
+					//å¯ä»¥ä¸ç»è¿‡ç¼–ç ç›´æŽ¥ç”¨äºŽURL  
 					if (!((hex >= 48 && hex <= 57) || //0-9  
 						(hex >=97 && hex <= 122) ||   //a-z  
 						(hex >=65 && hex <= 90) ||    //A-Z  
-						//Ò»Ð©ÌØÊâ·ûºÅ¼°±£Áô×Ö[$-_.+!*'(),]  [$&+,/:;=?@]  
+						//ä¸€äº›ç‰¹æ®Šç¬¦å·åŠä¿ç•™å­—[$-_.+!*'(),]  [$&+,/:;=?@]  
 						hex == 0x21 || hex == 0x24 || hex == 0x26 || hex == 0x27 || hex == 0x28 || hex == 0x29 
 						|| hex == 0x2a || hex == 0x2b|| hex == 0x2c || hex == 0x2d || hex == 0x2e || hex == 0x2f 
 						|| hex == 0x3A || hex == 0x3B|| hex == 0x3D || hex == 0x3f || hex == 0x40 || hex == 0x5f 
@@ -302,19 +301,19 @@ public:
 		std::size_t i = 0;
 		while (i < len) {
 			if (data[i] <= 0x7f) {
-				//±àÂëÐ¡ÓÚµÈÓÚ127,Ö»ÓÐÒ»¸ö×Ö½ÚµÄ±àÂë£¬¼æÈÝASCII
+				//ç¼–ç å°äºŽç­‰äºŽ127,åªæœ‰ä¸€ä¸ªå­—èŠ‚çš„ç¼–ç ï¼Œå…¼å®¹ASCII
 				i++;
 				continue;
 			}
 			else {
-				//´óÓÚ127µÄÊ¹ÓÃË«×Ö½Ú±àÂë
+				//å¤§äºŽ127çš„ä½¿ç”¨åŒå­—èŠ‚ç¼–ç 
 				if (data[i] >= 0x81 &&
 					data[i] <= 0xfe &&
 					data[i + 1] >= 0x40 &&
 					data[i + 1] <= 0xfe &&
 					data[i + 1] != 0xf7) 
 				{
-					//Èç¹ûÓÐGBK±àÂëµÄ£¬¾ÍËãÕû¸ö×Ö·û´®¶¼ÊÇGBK±àÂë
+					//å¦‚æžœæœ‰GBKç¼–ç çš„ï¼Œå°±ç®—æ•´ä¸ªå­—ç¬¦ä¸²éƒ½æ˜¯GBKç¼–ç 
 					return true;
 				}
 			}
@@ -355,10 +354,10 @@ public:
 				// 1111_0XXX 10XX_XXXX 10XX_XXXX 10XX_XXXX
 				// 1111_10XX 10XX_XXXX 10XX_XXXX 10XX_XXXX 10XX_XXXX
 				// 1111_110X 10XX_XXXX 10XX_XXXX 10XX_XXXX 10XX_XXXX 10XX_XXXX
-				// preNUm() ·µ»ØÊ×¸ö×Ö½Ú8¸öbitsÖÐÊ×bitÇ°Ãæ1bitµÄ¸öÊý£¬¸ÃÊýÁ¿Ò²ÊÇ¸Ã×Ö·ûËùÊ¹ÓÃµÄ×Ö½ÚÊý        
+				// preNUm() è¿”å›žé¦–ä¸ªå­—èŠ‚8ä¸ªbitsä¸­é¦–bitå‰é¢1bitçš„ä¸ªæ•°ï¼Œè¯¥æ•°é‡ä¹Ÿæ˜¯è¯¥å­—ç¬¦æ‰€ä½¿ç”¨çš„å­—èŠ‚æ•°        
 				i++;
 				for (int j = 0; j < num - 1; j++) {
-					//ÅÐ¶ÏºóÃænum - 1 ¸ö×Ö½ÚÊÇ²»ÊÇ¶¼ÊÇ10¿ª
+					//åˆ¤æ–­åŽé¢num - 1 ä¸ªå­—èŠ‚æ˜¯ä¸æ˜¯éƒ½æ˜¯10å¼€
 					if ((data[i] & 0xc0) != 0x80) {
 						return false;
 					}
@@ -367,7 +366,7 @@ public:
 			}
 			else 
 			{
-				//ÆäËûÇé¿öËµÃ÷²»ÊÇutf-8
+				//å…¶ä»–æƒ…å†µè¯´æ˜Žä¸æ˜¯utf-8
 				return false;
 			}
 		}

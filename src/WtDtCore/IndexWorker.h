@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "../Includes/WTSMarcos.h"
 #include "../Includes/WTSStruct.h"
 #include "../Includes/FasterDefs.h"
@@ -52,7 +52,7 @@ protected:
 		}
 	}WeightFactor;
 	SpinMutex	_mtx_data;
-	faster_hashmap<LongKey, WeightFactor>	_weight_scales;
+	wt_hashmap<std::string, WeightFactor>	_weight_scales;
 	uint32_t	_weight_alg;
 
 	StdThreadPtr	_thrd_trigger;

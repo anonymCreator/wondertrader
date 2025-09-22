@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <string>
 #include <stdint.h>
 #include <boost/circular_buffer.hpp>
@@ -69,27 +69,27 @@ private:
 		_TicksList() :_last_tick_time(0), _first_tick_time(UINT64_MAX){}
 	} TicksList;
 
-	typedef faster_hashmap<std::string, BarsList> BarsCache;
+	typedef wt_hashmap<std::string, BarsList> BarsCache;
 	BarsCache	_bars_cache;
 
-	typedef faster_hashmap<std::string, TicksList> TicksCache;
+	typedef wt_hashmap<std::string, TicksList> TicksCache;
 	TicksCache	_ticks_cache;
 
 private:
 	//////////////////////////////////////////////////////////////////////////
 	/*
-	 *	ÕâÀï·ÅLMDBµÄÊı¾İ¿â¶¨Òå
-	 *	KÏßÊı¾İ£¬°´ÕÕÃ¿¸öÊĞ³¡m1/m5/d1Èı¸öÖÜÆÚÒ»¹²Èı¸öÊı¾İ¿â£¬Â·¾¶Èç./m1/CFFEX
-	 *	TickÊı¾İ£¬Ã¿¸öºÏÔ¼Ò»¸öÊı¾İ¿â£¬Â·¾¶Èç./ticks/CFFEX/IF2101
+	 *	è¿™é‡Œæ”¾LMDBçš„æ•°æ®åº“å®šä¹‰
+	 *	Kçº¿æ•°æ®ï¼ŒæŒ‰ç…§æ¯ä¸ªå¸‚åœºm1/m5/d1ä¸‰ä¸ªå‘¨æœŸä¸€å…±ä¸‰ä¸ªæ•°æ®åº“ï¼Œè·¯å¾„å¦‚./m1/CFFEX
+	 *	Tickæ•°æ®ï¼Œæ¯ä¸ªåˆçº¦ä¸€ä¸ªæ•°æ®åº“ï¼Œè·¯å¾„å¦‚./ticks/CFFEX/IF2101
 	 */
 	typedef std::shared_ptr<WtLMDB> WtLMDBPtr;
-	typedef faster_hashmap<std::string, WtLMDBPtr> WtLMDBMap;
+	typedef wt_hashmap<std::string, WtLMDBPtr> WtLMDBMap;
 
 	WtLMDBMap	_exchg_m1_dbs;
 	WtLMDBMap	_exchg_m5_dbs;
 	WtLMDBMap	_exchg_d1_dbs;
 
-	//ÓÃexchg.code×÷Îªkey£¬ÈçBINANCE.BTCUSDT
+	//ç”¨exchg.codeä½œä¸ºkeyï¼Œå¦‚BINANCE.BTCUSDT
 	WtLMDBMap	_tick_dbs;
 
 	WtLMDBPtr	get_k_db(const char* exchg, WTSKlinePeriod period);

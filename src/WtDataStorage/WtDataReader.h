@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <string>
 #include <stdint.h>
 
@@ -34,7 +34,7 @@ private:
 		}
 
 	} RTKlineBlockPair;
-	typedef faster_hashmap<std::string, RTKlineBlockPair>	RTKBlockFilesMap;
+	typedef wt_hashmap<std::string, RTKlineBlockPair>	RTKBlockFilesMap;
 
 	typedef struct _TBlockPair
 	{
@@ -49,7 +49,7 @@ private:
 			_last_cap = 0;
 		}
 	} TickBlockPair;
-	typedef faster_hashmap<std::string, TickBlockPair>	TBlockFilesMap;
+	typedef wt_hashmap<std::string, TickBlockPair>	TBlockFilesMap;
 
 	typedef struct _TransBlockPair
 	{
@@ -66,7 +66,7 @@ private:
 			_last_cap = 0;
 		}
 	} TransBlockPair;
-	typedef faster_hashmap<std::string, TransBlockPair>	TransBlockFilesMap;
+	typedef wt_hashmap<std::string, TransBlockPair>	TransBlockFilesMap;
 
 	typedef struct _OdrDtlBlockPair
 	{
@@ -83,7 +83,7 @@ private:
 			_last_cap = 0;
 		}
 	} OrdDtlBlockPair;
-	typedef faster_hashmap<std::string, OrdDtlBlockPair>	OrdDtlBlockFilesMap;
+	typedef wt_hashmap<std::string, OrdDtlBlockPair>	OrdDtlBlockFilesMap;
 
 	typedef struct _OdrQueBlockPair
 	{
@@ -100,7 +100,7 @@ private:
 			_last_cap = 0;
 		}
 	} OrdQueBlockPair;
-	typedef faster_hashmap<std::string, OrdQueBlockPair>	OrdQueBlockFilesMap;
+	typedef wt_hashmap<std::string, OrdQueBlockPair>	OrdQueBlockFilesMap;
 
 	RTKBlockFilesMap	_rt_min1_map;
 	RTKBlockFilesMap	_rt_min5_map;
@@ -124,7 +124,7 @@ private:
 		}
 	} HisTBlockPair;
 
-	typedef faster_hashmap<std::string, HisTBlockPair>	HisTickBlockMap;
+	typedef wt_hashmap<std::string, HisTBlockPair>	HisTickBlockMap;
 
 	typedef struct _HisTransBlockPair
 	{
@@ -140,7 +140,7 @@ private:
 		}
 	} HisTransBlockPair;
 
-	typedef faster_hashmap<std::string, HisTransBlockPair>	HisTransBlockMap;
+	typedef wt_hashmap<std::string, HisTransBlockPair>	HisTransBlockMap;
 
 	typedef struct _HisOrdDtlBlockPair
 	{
@@ -156,7 +156,7 @@ private:
 		}
 	} HisOrdDtlBlockPair;
 
-	typedef faster_hashmap<std::string, HisOrdDtlBlockPair>	HisOrdDtlBlockMap;
+	typedef wt_hashmap<std::string, HisOrdDtlBlockPair>	HisOrdDtlBlockMap;
 
 	typedef struct _HisOrdQueBlockPair
 	{
@@ -172,7 +172,7 @@ private:
 		}
 	} HisOrdQueBlockPair;
 
-	typedef faster_hashmap<std::string, HisOrdQueBlockPair>	HisOrdQueBlockMap;
+	typedef wt_hashmap<std::string, HisOrdQueBlockPair>	HisOrdQueBlockMap;
 
 	HisTickBlockMap		_his_tick_map;
 	HisOrdDtlBlockMap	_his_orddtl_map;
@@ -190,7 +190,7 @@ private:
 	bool	cacheAdjustedStkBars(void* codeInfo, const std::string& key, const char* stdCode, WTSKlinePeriod period);
 
 	/*
-	 *	½«ÀúÊ·Êı¾İ·ÅÈë»º´æ
+	 *	å°†å†å²æ•°æ®æ”¾å…¥ç¼“å­˜
 	 */
 	bool	cacheHisBarsFromFile(void* codeInfo, const std::string& key, const char* stdCode, WTSKlinePeriod period);
 	bool	cacheFinalBarsFromLoader(void* codeInfo, const std::string& key, const char* stdCode, WTSKlinePeriod period);
@@ -221,7 +221,7 @@ private:
 	IHotMgr*		_hot_mgr;
 
 	//By Wesley @ 2022.08.15
-	//¸´È¨±ê¼Ç£¬²ÉÓÃÎ»ÔËËã±íÊ¾£¬1|2|4,1±íÊ¾³É½»Á¿¸´È¨£¬2±íÊ¾³É½»¶î¸´È¨£¬4±íÊ¾×Ü³Ö¸´È¨£¬ÆäËû´ı¶¨
+	//å¤æƒæ ‡è®°ï¼Œé‡‡ç”¨ä½è¿ç®—è¡¨ç¤ºï¼Œ1|2|4,1è¡¨ç¤ºæˆäº¤é‡å¤æƒï¼Œ2è¡¨ç¤ºæˆäº¤é¢å¤æƒï¼Œ4è¡¨ç¤ºæ€»æŒå¤æƒï¼Œå…¶ä»–å¾…å®š
 	uint32_t		_adjust_flag;
 
 	typedef struct _BarsList
@@ -238,19 +238,19 @@ private:
 		_BarsList() :_rt_cursor(UINT_MAX), _factor(DBL_MAX){}
 	} BarsList;
 
-	typedef faster_hashmap<std::string, BarsList> BarsCache;
+	typedef wt_hashmap<std::string, BarsList> BarsCache;
 	BarsCache	_bars_cache;
 
 	uint64_t	_last_time;
 
-	//³ıÈ¨Òò×Ó
+	//é™¤æƒå› å­
 	typedef struct _AdjFactor
 	{
 		uint32_t	_date;
 		double		_factor;
 	} AdjFactor;
 	typedef std::vector<AdjFactor> AdjFactorList;
-	typedef faster_hashmap<LongKey, AdjFactorList>	AdjFactorMap;
+	typedef wt_hashmap<std::string, AdjFactorList>	AdjFactorMap;
 	AdjFactorMap	_adj_factors;
 
 	const AdjFactorList& getAdjFactors(const char* code, const char* exchg, const char* pid);

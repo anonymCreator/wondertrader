@@ -1,4 +1,4 @@
-/*!
+﻿/*!
  * \file WtDtPorter.h
  * \project	WonderTrader
  *
@@ -37,6 +37,8 @@ extern "C"
 	EXPORT_FLAG void		subscribe_tick(const char* stdCode, bool bReplace);
 
 	EXPORT_FLAG void		subscribe_bar(const char* stdCode, const char* period);
+
+	EXPORT_FLAG void		clear_cache();
 
 #ifdef __cplusplus
 }

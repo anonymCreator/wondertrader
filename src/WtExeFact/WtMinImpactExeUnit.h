@@ -1,10 +1,10 @@
-/*!
+ï»¿/*!
  * \file WtMinImpactExeUnit.h
  *
  * \author Wesley
  * \date 2020/03/30
  *
- * ×îĞ¡³å»÷Ö´ĞĞµ¥Ôª
+ * æœ€å°å†²å‡»æ‰§è¡Œå•å…ƒ
  */
 #pragma once
 #include "../Includes/ExecuteDefs.h"
@@ -23,107 +23,108 @@ private:
 
 public:
 	/*
-	 *	ËùÊôÖ´ĞĞÆ÷¹¤³§Ãû³Æ
+	 *	æ‰€å±æ‰§è¡Œå™¨å·¥å‚åç§°
 	 */
 	virtual const char* getFactName() override;
 
 	/*
-	 *	Ö´ĞĞµ¥ÔªÃû³Æ
+	 *	æ‰§è¡Œå•å…ƒåç§°
 	 */
 	virtual const char* getName() override;
 
 	/*
-	 *	³õÊ¼»¯Ö´ĞĞµ¥Ôª
-	 *	ctx		Ö´ĞĞµ¥ÔªÔËĞĞ»·¾³
-	 *	code	¹ÜÀíµÄºÏÔ¼´úÂë
+	 *	åˆå§‹åŒ–æ‰§è¡Œå•å…ƒ
+	 *	ctx		æ‰§è¡Œå•å…ƒè¿è¡Œç¯å¢ƒ
+	 *	code	ç®¡ç†çš„åˆçº¦ä»£ç 
 	 */
 	virtual void init(ExecuteContext* ctx, const char* stdCode, WTSVariant* cfg) override;
 
 	/*
-	 *	¶©µ¥»Ø±¨
-	 *	localid	±¾µØµ¥ºÅ
-	 *	code	ºÏÔ¼´úÂë
-	 *	isBuy	ÂòorÂô
-	 *	leftover	Ê£ÓàÊıÁ¿
-	 *	price	Î¯ÍĞ¼Û¸ñ
-	 *	isCanceled	ÊÇ·ñÒÑ³·Ïú
+	 *	è®¢å•å›æŠ¥
+	 *	localid	æœ¬åœ°å•å·
+	 *	code	åˆçº¦ä»£ç 
+	 *	isBuy	ä¹°orå–
+	 *	leftover	å‰©ä½™æ•°é‡
+	 *	price	å§”æ‰˜ä»·æ ¼
+	 *	isCanceled	æ˜¯å¦å·²æ’¤é”€
 	 */
 	virtual void on_order(uint32_t localid, const char* stdCode, bool isBuy, double leftover, double price, bool isCanceled) override;
 
 	/*
-	 *	tickÊı¾İ»Øµ÷
-	 *	newTick	×îĞÂµÄtickÊı¾İ
+	 *	tickæ•°æ®å›è°ƒ
+	 *	newTick	æœ€æ–°çš„tickæ•°æ®
 	 */
 	virtual void on_tick(WTSTickData* newTick) override;
 
 	/*
-	 *	³É½»»Ø±¨
-	 *	code	ºÏÔ¼´úÂë
-	 *	isBuy	ÂòorÂô
-	 *	vol		³É½»ÊıÁ¿,ÕâÀïÃ»ÓĞÕı¸º,Í¨¹ıisBuyÈ·¶¨ÂòÈë»¹ÊÇÂô³ö
-	 *	price	³É½»¼Û¸ñ
+	 *	æˆäº¤å›æŠ¥
+	 *	code	åˆçº¦ä»£ç 
+	 *	isBuy	ä¹°orå–
+	 *	vol		æˆäº¤æ•°é‡,è¿™é‡Œæ²¡æœ‰æ­£è´Ÿ,é€šè¿‡isBuyç¡®å®šä¹°å…¥è¿˜æ˜¯å–å‡º
+	 *	price	æˆäº¤ä»·æ ¼
 	 */
 	virtual void on_trade(uint32_t localid, const char* stdCode, bool isBuy, double vol, double price) override;
 
 	/*
-	 *	ÏÂµ¥½á¹û»Ø±¨
+	 *	ä¸‹å•ç»“æœå›æŠ¥
 	 */
 	virtual void on_entrust(uint32_t localid, const char* stdCode, bool bSuccess, const char* message) override;
 
 	/*
-	 *	ÉèÖÃĞÂµÄÄ¿±ê²ÖÎ»
-	 *	code	ºÏÔ¼´úÂë
-	 *	newVol	ĞÂµÄÄ¿±ê²ÖÎ»
+	 *	è®¾ç½®æ–°çš„ç›®æ ‡ä»“ä½
+	 *	code	åˆçº¦ä»£ç 
+	 *	newVol	æ–°çš„ç›®æ ‡ä»“ä½
 	 */
 	virtual void set_position(const char* stdCode, double newVol) override;
 
 	/*
-	 *	ÇåÀíÈ«²¿³Ö²Ö
-	 *	stdCode	ºÏÔ¼´úÂë
+	 *	æ¸…ç†å…¨éƒ¨æŒä»“
+	 *	stdCode	åˆçº¦ä»£ç 
 	 */
 	virtual void clear_all_position(const char* stdCode) override;
 
 	/*
-	 *	½»Ò×Í¨µÀ¾ÍĞ÷»Øµ÷
+	 *	äº¤æ˜“é€šé“å°±ç»ªå›è°ƒ
 	 */
 	virtual void on_channel_ready() override;
 
 	/*
-	 *	½»Ò×Í¨µÀ¶ªÊ§»Øµ÷
+	 *	äº¤æ˜“é€šé“ä¸¢å¤±å›è°ƒ
 	 */
 	virtual void on_channel_lost() override;
 
 private:
-	WTSTickData* _last_tick;	//ÉÏÒ»±ÊĞĞÇé
-	double		_target_pos;	//Ä¿±ê²ÖÎ»
+	WTSTickData* _last_tick;	//ä¸Šä¸€ç¬”è¡Œæƒ…
+	double		_target_pos;	//ç›®æ ‡ä»“ä½
 	StdUniqueMutex	_mtx_calc;
 
 	WTSCommodityInfo*	_comm_info;
 	WTSSessionInfo*		_sess_info;
 
 	//////////////////////////////////////////////////////////////////////////
-	//Ö´ĞĞ²ÎÊı
+	//æ‰§è¡Œå‚æ•°
 	int32_t		_price_offset;
-	uint32_t	_expire_secs;
+	uint32_t	_expire_secs;//è®¢å•è¶…æ—¶ç§’æ•°
 	int32_t		_price_mode;
-	uint32_t	_entrust_span;
+	uint32_t	_entrust_span; //å‘å•æ—¶é—´é—´éš”
 	bool		_by_rate;
-	double		_order_lots;
+	double		_order_lots;//å•æ¬¡å‘å•æ‰‹æ•°
 	double		_qty_rate;
 
 	/*
 	 *	By Wesley @ 2022.12.15
-	 *	Ôö¼ÓÒ»¸ö×îĞ¡¿ª²ÖÊıÁ¿
-	 *	ÎªÊ²Ã´Ã»ÓĞ×îĞ¡Æ½²ÖÊıÁ¿ÄØ£¬ÒòÎªÆ½²ÖÒª¸ù¾İ³Ö²ÖÀ´£¬ËùÒÔÎŞ·¨ÏŞÖÆ
+	 *	å¢åŠ ä¸€ä¸ªæœ€å°å¼€ä»“æ•°é‡
+	 *	ä¸ºä»€ä¹ˆæ²¡æœ‰æœ€å°å¹³ä»“æ•°é‡å‘¢ï¼Œå› ä¸ºå¹³ä»“è¦æ ¹æ®æŒä»“æ¥ï¼Œæ‰€ä»¥æ— æ³•é™åˆ¶
 	 */
-	double		_min_open_lots;
+	double		_min_open_lots;//æœ€å°å¼€ä»“æ•°é‡
 
 	WtOrdMon	_orders_mon;
-	uint32_t	_cancel_cnt;
-	uint32_t	_cancel_times;
+	uint32_t	_cancel_cnt;//åœ¨é€”æ’¤å•é‡
+	uint32_t	_cancel_times;//æ’¤å•æ¬¡æ•°
 
-	uint64_t	_last_place_time;
-	uint64_t	_last_tick_time;
+
+	uint64_t	_last_place_time;//ä¸Šä¸ªä¸‹å•æ—¶é—´
+	uint64_t	_last_tick_time;//ä¸Šä¸ªtickæ—¶é—´
 
 	std::atomic<bool>	_in_calc;
 

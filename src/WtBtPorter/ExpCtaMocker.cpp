@@ -1,4 +1,4 @@
-/*!
+ï»¿/*!
  * \file PyCtaMocker.cpp
  * \project	WonderTrader
  *
@@ -12,8 +12,8 @@
 
 extern WtBtRunner& getRunner();
 
-ExpCtaMocker::ExpCtaMocker(HisDataReplayer* replayer, const char* name, int32_t slippage /* = 0 */, bool persistData/* = true*/, EventNotifier* notifier /* = NULL */)
-	: CtaMocker(replayer, name, slippage, persistData, notifier)
+ExpCtaMocker::ExpCtaMocker(HisDataReplayer* replayer, const char* name, int32_t slippage /* = 0 */, bool persistData /* = true */, EventNotifier* notifier /* = NULL */, bool isRatioSlp /* = false */)
+	: CtaMocker(replayer, name, slippage, persistData, notifier, isRatioSlp)
 {
 }
 
@@ -26,7 +26,7 @@ void ExpCtaMocker::on_init()
 {
 	CtaMocker::on_init();
 
-	//ÏòÍâ²¿»Øµ÷
+	//å‘å¤–éƒ¨å›è°ƒ
 	getRunner().ctx_on_init(_context_id, ET_CTA);
 
 	getRunner().on_initialize_event();
@@ -54,7 +54,7 @@ void ExpCtaMocker::on_tick_updated(const char* stdCode, WTSTickData* newTick)
 	if (it == _tick_subs.end())
 		return;
 
-	ExpCtaMocker::on_tick_updated(stdCode, newTick);
+	CtaMocker::on_tick_updated(stdCode, newTick);
 	getRunner().ctx_on_tick(_context_id, stdCode, newTick, ET_CTA);
 }
 
@@ -62,7 +62,7 @@ void ExpCtaMocker::on_bar_close(const char* code, const char* period, WTSBarStru
 {
 	CtaMocker::on_bar_close(code, period, newBar);
 
-	//ÒªÏòÍâ²¿»Øµ÷
+	//è¦å‘å¤–éƒ¨å›è°ƒ
 	getRunner().ctx_on_bar(_context_id, code, period, newBar, ET_CTA);
 }
 

@@ -1,4 +1,4 @@
-/*!
+ï»¿/*!
 * \file MfMocker.cpp
 * \project	WonderTrader
 *
@@ -33,7 +33,7 @@ inline uint32_t makeSelCtxId()
 }
 
 
-SelMocker::SelMocker(HisDataReplayer* replayer, const char* name, int32_t slippage /* = 0 */)
+SelMocker::SelMocker(HisDataReplayer* replayer, const char* name, int32_t slippage /* = 0 */, bool isRatioSlp /* = false */)
 	: ISelStraCtx(name)
 	, _replayer(replayer)
 	, _total_calc_time(0)
@@ -42,6 +42,8 @@ SelMocker::SelMocker(HisDataReplayer* replayer, const char* name, int32_t slippa
 	, _ud_modified(false)
 	, _strategy(NULL)
 	, _slippage(slippage)
+	, _ratio_slippage(isRatioSlp)
+	, _schedule_times(0)
 {
 	_context_id = makeSelCtxId();
 }
@@ -55,7 +57,7 @@ void SelMocker::dump_stradata()
 {
 	rj::Document root(rj::kObjectType);
 
-	{//³Ö²ÖÊı¾İ±£´æ
+	{//æŒä»“æ•°æ®ä¿å­˜
 		rj::Value jPos(rj::kArrayType);
 
 		rj::Document::AllocatorType &allocator = root.GetAllocator();
@@ -70,6 +72,8 @@ void SelMocker::dump_stradata()
 			pItem.AddMember("volume", pInfo._volume, allocator);
 			pItem.AddMember("closeprofit", pInfo._closeprofit, allocator);
 			pItem.AddMember("dynprofit", pInfo._dynprofit, allocator);
+			pItem.AddMember("lastentertime", pInfo._last_entertime, allocator);
+			pItem.AddMember("lastexittime", pInfo._last_exittime, allocator);
 
 			rj::Value details(rj::kArrayType);
 			for (auto dit = pInfo._details.begin(); dit != pInfo._details.end(); dit++)
@@ -78,6 +82,8 @@ void SelMocker::dump_stradata()
 				rj::Value dItem(rj::kObjectType);
 				dItem.AddMember("long", dInfo._long, allocator);
 				dItem.AddMember("price", dInfo._price, allocator);
+				dItem.AddMember("maxprice", dInfo._max_price, allocator);
+				dItem.AddMember("minprice", dInfo._min_price, allocator);
 				dItem.AddMember("volume", dInfo._volume, allocator);
 				dItem.AddMember("opentime", dInfo._opentime, allocator);
 				dItem.AddMember("opentdate", dInfo._opentdate, allocator);
@@ -98,7 +104,7 @@ void SelMocker::dump_stradata()
 		root.AddMember("positions", jPos, allocator);
 	}
 
-	{//×Ê½ğ±£´æ
+	{//èµ„é‡‘ä¿å­˜
 		rj::Value jFund(rj::kObjectType);
 		rj::Document::AllocatorType &allocator = root.GetAllocator();
 
@@ -110,7 +116,7 @@ void SelMocker::dump_stradata()
 		root.AddMember("fund", jFund, allocator);
 	}
 
-	{//ĞÅºÅ±£´æ
+	{//ä¿¡å·ä¿å­˜
 		rj::Value jSigs(rj::kObjectType);
 		rj::Document::AllocatorType &allocator = root.GetAllocator();
 
@@ -162,7 +168,7 @@ void SelMocker::dump_outputs()
 	StdFile::write_file_content(filename.c_str(), (void*)content.c_str(), content.size());
 
 	filename = folder + "closes.csv";
-	content = "code,direct,opentime,openprice,closetime,closeprice,qty,profit,totalprofit,entertag,exittag\n";
+	content = "code,direct,opentime,openprice,closetime,closeprice,qty,profit,maxprofit,maxloss,totalprofit,entertag,exittag,openbarno,closebarno\n";
 	content += _close_logs.str();
 	StdFile::write_file_content(filename.c_str(), (void*)content.c_str(), content.size());
 
@@ -213,12 +219,12 @@ void SelMocker::log_trade(const char* stdCode, bool isLong, bool isOpen, uint64_
 	_trade_logs << stdCode << "," << curTime << "," << (isLong ? "LONG" : "SHORT") << "," << (isOpen ? "OPEN" : "CLOSE") << "," << price << "," << qty << "," << userTag << "," << fee << "\n";
 }
 
-void SelMocker::log_close(const char* stdCode, bool isLong, uint64_t openTime, double openpx, uint64_t closeTime, double closepx, double qty,
-	double profit, double totalprofit /* = 0 */, const char* enterTag /* = "" */, const char* exitTag /* = "" */)
+void SelMocker::log_close(const char* stdCode, bool isLong, uint64_t openTime, double openpx, uint64_t closeTime, double closepx, double qty, double profit, double maxprofit, double maxloss,
+	double totalprofit /* = 0 */, const char* enterTag /* = "" */, const char* exitTag /* = "" */, uint32_t openBarNo/* = 0*/, uint32_t closeBarNo/* = 0*/)
 {
 	_close_logs << stdCode << "," << (isLong ? "LONG" : "SHORT") << "," << openTime << "," << openpx
-		<< "," << closeTime << "," << closepx << "," << qty << "," << profit << ","
-		<< totalprofit << "," << enterTag << "," << exitTag << "\n";
+		<< "," << closeTime << "," << closepx << "," << qty << "," << profit << "," << maxprofit << "," << maxloss << ","
+		<< totalprofit << "," << enterTag << "," << exitTag << "," << openBarNo << "," << closeBarNo << "\n";
 }
 
 bool SelMocker::init_sel_factory(WTSVariant* cfg)
@@ -305,10 +311,46 @@ void SelMocker::handle_replay_done()
 
 void SelMocker::handle_tick(const char* stdCode, WTSTickData* newTick, uint32_t pxType)
 {
-	_price_map[stdCode].first = newTick->price();
+	double cur_px = newTick->price();
+
+	/*
+	 *	By Wesley @ 2022.04.19
+	 *	è¿™é‡Œçš„é€»è¾‘æ”¹äº†ä¸€ä¸‹
+	 *	å¦‚æœç¼“å­˜çš„ä»·æ ¼ä¸å­˜åœ¨ï¼Œåˆ™ä¸Šä¸€ç¬”ä»·æ ¼å°±ç”¨æœ€æ–°ä»·
+	 *	è¿™é‡Œä¸»è¦æ˜¯ä¸ºäº†åº”å¯¹è·¨æ—¥ä»·æ ¼è·³ç©ºçš„æƒ…å†µ
+	 */
+	double last_px = cur_px;
+	if (pxType != 0)
+	{
+		auto it = _price_map.find(stdCode);
+		if (it != _price_map.end())
+			last_px = it->second.first;
+		else
+			last_px = cur_px;
+	}
+
+	_price_map[stdCode].first = cur_px;
 	_price_map[stdCode].second = (uint64_t)newTick->actiondate() * 1000000000 + newTick->actiontime();
 
-	//ÏÈ¼ì²éÊÇ·ñÒªĞÅºÅÒª´¥·¢
+	//å…ˆæ£€æŸ¥æ˜¯å¦è¦ä¿¡å·è¦è§¦å‘
+	proc_tick(stdCode, last_px, cur_px);
+
+	on_tick_updated(stdCode, newTick);
+
+	/*
+	 *	By Wesley @ 2022.04.19
+	 *	isBarEndï¼Œå¦‚æœæ˜¯é€tickå›æ”¾ï¼Œè¿™ä¸ªæ°¸è¿œéƒ½æ˜¯trueï¼Œæ°¸è¿œä¹Ÿä¸ä¼šè§¦å‘ä¸‹é¢è¿™æ®µé€»è¾‘
+	 *	å¦‚æœæ˜¯æ¨¡æ‹Ÿçš„tickæ•°æ®ï¼Œç”¨æ”¶ç›˜ä»·æ¨¡æ‹Ÿtickçš„æ—¶å€™ï¼ŒisBarEndæ‰ä¼šä¸ºtrue
+	 *	å¦‚æœä¸æ˜¯æ”¶ç›˜ä»·æ¨¡æ‹Ÿçš„tickï¼Œé‚£ä¹ˆç›´æ¥åœ¨å½“å‰tickè§¦å‘æ’®åˆé€»è¾‘
+	 *	è¿™æ ·åšçš„ç›®çš„æ˜¯ä¸ºäº†è®©åœ¨æ¨¡æ‹Ÿtickè§¦å‘çš„ontickä¸­ä¸‹å•çš„ä¿¡å·èƒ½å¤Ÿæ­£å¸¸å¤„ç†
+	 *	è€Œä¸è‡³äºåœ¨å›æµ‹çš„æ—¶å€™æˆäº¤ä»·åç¦»å¤ªè¿œ
+	 */
+	if (pxType != 3)
+		proc_tick(stdCode, last_px, cur_px);
+}
+
+void SelMocker::proc_tick(const char* stdCode, double last_px, double cur_px)
+{
 	{
 		auto it = _sig_map.find(stdCode);
 		if (it != _sig_map.end())
@@ -318,57 +360,21 @@ void SelMocker::handle_tick(const char* stdCode, WTSTickData* newTick, uint32_t 
 				const SigInfo& sInfo = it->second;
 				double price;
 				if (decimal::eq(sInfo._desprice, 0.0))
-					price = newTick->price();
+					price = cur_px;
 				else
 					price = sInfo._desprice;
-				do_set_position(stdCode, sInfo._volume, price, sInfo._usertag.c_str(), sInfo._triggered);
+				do_set_position(stdCode, sInfo._volume, price, sInfo._usertag.c_str());
 				_sig_map.erase(it);
 			}
-
 		}
 	}
 
-	update_dyn_profit(stdCode, newTick->price());
-
-	on_tick_updated(stdCode, newTick);
-
-	/*
-	 *	By Wesley @ 2022.04.19
-	 *	isBarEnd£¬Èç¹ûÊÇÖğtick»Ø·Å£¬Õâ¸öÓÀÔ¶¶¼ÊÇtrue£¬ÓÀÔ¶Ò²²»»á´¥·¢ÏÂÃæÕâ¶ÎÂß¼­
-	 *	Èç¹ûÊÇÄ£ÄâµÄtickÊı¾İ£¬ÓÃÊÕÅÌ¼ÛÄ£ÄâtickµÄÊ±ºò£¬isBarEnd²Å»áÎªtrue
-	 *	Èç¹û²»ÊÇÊÕÅÌ¼ÛÄ£ÄâµÄtick£¬ÄÇÃ´Ö±½ÓÔÚµ±Ç°tick´¥·¢´éºÏÂß¼­
-	 *	ÕâÑù×öµÄÄ¿µÄÊÇÎªÁËÈÃÔÚÄ£Äâtick´¥·¢µÄontickÖĞÏÂµ¥µÄĞÅºÅÄÜ¹»Õı³£´¦Àí
-	 *	¶ø²»ÖÁÓÚÔÚ»Ø²âµÄÊ±ºò³É½»¼ÛÆ«ÀëÌ«Ô¶
-	 */
-	if (pxType!=3)
-	{
-		//ÏÈ¼ì²éÊÇ·ñÒªĞÅºÅÒª´¥·¢
-		{
-			auto it = _sig_map.find(stdCode);
-			if (it != _sig_map.end())
-			{
-				//if (sInfo->isInTradingTime(_replayer->get_raw_time(), true))
-				{
-					const SigInfo& sInfo = it->second;
-					double price;
-					if (decimal::eq(sInfo._desprice, 0.0))
-						price = newTick->price();
-					else
-						price = sInfo._desprice;
-					do_set_position(stdCode, sInfo._volume, price, sInfo._usertag.c_str(), sInfo._triggered);
-					_sig_map.erase(it);
-				}
-
-			}
-		}
-
-		update_dyn_profit(stdCode, newTick->price());
-	}
+	update_dyn_profit(stdCode, cur_px);
 }
 
 
 //////////////////////////////////////////////////////////////////////////
-//»Øµ÷º¯Êı
+//å›è°ƒå‡½æ•°
 void SelMocker::on_bar(const char* stdCode, const char* period, uint32_t times, WTSBarStruct* newBar)
 {
 	if (newBar == NULL)
@@ -383,6 +389,7 @@ void SelMocker::on_bar(const char* stdCode, const char* period, uint32_t times, 
 	std::string key = StrUtil::printf("%s#%s", stdCode, realPeriod.c_str());
 	KlineTag& tag = _kline_tags[key];
 	tag._closed = true;
+	tag._count++;
 
 	on_bar_close(stdCode, realPeriod.c_str(), newBar);
 }
@@ -392,7 +399,7 @@ void SelMocker::on_init()
 	if (_strategy)
 		_strategy->on_init(this);
 
-	WTSLogger::info("SEL Strategy initialized, with slippage: {}", _slippage);
+	WTSLogger::info("SEL Strategy initialized with {} slippage: {}", _ratio_slippage ? "ratio" : "absolute", _slippage);
 }
 
 void SelMocker::update_dyn_profit(const char* stdCode, double price)
@@ -418,6 +425,9 @@ void SelMocker::update_dyn_profit(const char* stdCode, double price)
 				else if (dInfo._profit < 0)
 					dInfo._max_loss = min(dInfo._profit, dInfo._max_loss);
 
+				dInfo._max_price = std::max(dInfo._max_price, price);
+				dInfo._min_price = std::min(dInfo._min_price, price);
+
 				dynprofit += dInfo._profit;
 			}
 
@@ -438,7 +448,7 @@ void SelMocker::update_dyn_profit(const char* stdCode, double price)
 void SelMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
 {
 	//By Wesley @ 2022.04.19
-	//Õâ¸öÂß¼­Ç¨ÒÆµ½handle_tickÈ¥ÁË
+	//è¿™ä¸ªé€»è¾‘è¿ç§»åˆ°handle_tickå»äº†
 }
 
 void SelMocker::on_bar_close(const char* code, const char* period, WTSBarStruct* newBar)
@@ -466,19 +476,21 @@ void SelMocker::on_strategy_schedule(uint32_t curDate, uint32_t curTime)
 
 bool SelMocker::on_schedule(uint32_t curDate, uint32_t curTime, uint32_t fireTime)
 {
-	_is_in_schedule = true;//¿ªÊ¼µ÷¶È,ĞŞ¸Ä±ê¼Ç
+	_is_in_schedule = true;//å¼€å§‹è°ƒåº¦,ä¿®æ”¹æ ‡è®°
+
+	_schedule_times++;
 
 	TimeUtils::Ticker ticker;
 	on_strategy_schedule(curDate, curTime);
 
-	faster_hashset<std::string> to_clear;
+	wt_hashset<std::string> to_clear;
 	for(auto& v : _pos_map)
 	{
 		const PosInfo& pInfo = v.second;
 		const char* code = v.first.c_str();
 		if(_sig_map.find(code) == _sig_map.end() && !decimal::eq(pInfo._volume, 0.0))
 		{
-			//ĞÂµÄĞÅºÅÖĞÃ»ÓĞ¸Ã³Ö²Ö,ÔòÒªÇå¿Õ
+			//æ–°çš„ä¿¡å·ä¸­æ²¡æœ‰è¯¥æŒä»“,åˆ™è¦æ¸…ç©º
 			to_clear.insert(code);
 		}
 	}
@@ -491,14 +503,14 @@ bool SelMocker::on_schedule(uint32_t curDate, uint32_t curTime, uint32_t fireTim
 	_emit_times++;
 	_total_calc_time += ticker.micro_seconds();
 
-	_is_in_schedule = false;//µ÷¶È½áÊø,ĞŞ¸Ä±ê¼Ç
+	_is_in_schedule = false;//è°ƒåº¦ç»“æŸ,ä¿®æ”¹æ ‡è®°
 	return true;
 }
 
 void SelMocker::on_session_begin(uint32_t curTDate)
 {
 	_cur_tdate = curTDate;
-	//Ã¿¸ö½»Ò×ÈÕ¿ªÊ¼£¬Òª°Ñ¶³½á³Ö²ÖÖÃÁã
+	//æ¯ä¸ªäº¤æ˜“æ—¥å¼€å§‹ï¼Œè¦æŠŠå†»ç»“æŒä»“ç½®é›¶
 	for (auto& it : _pos_map)
 	{
 		const char* stdCode = it.first.c_str();
@@ -513,7 +525,7 @@ void SelMocker::on_session_begin(uint32_t curTDate)
 
 void SelMocker::enum_position(FuncEnumSelPositionCallBack cb)
 {
-	faster_hashmap<std::string, double> desPos;
+	wt_hashmap<std::string, double> desPos;
 	for (auto& it : _pos_map)
 	{
 		const char* stdCode = it.first.c_str();
@@ -563,7 +575,7 @@ void SelMocker::on_session_end(uint32_t curTDate)
 }
 
 //////////////////////////////////////////////////////////////////////////
-//²ßÂÔ½Ó¿Ú
+//ç­–ç•¥æ¥å£
 double SelMocker::stra_get_price(const char* stdCode)
 {
 	if (_replayer)
@@ -581,7 +593,7 @@ void SelMocker::stra_set_position(const char* stdCode, double qty, const char* u
 		return;
 	}
 
-	//Èç¹û²»ÄÜ×ö¿Õ£¬ÔòÄ¿±ê²ÖÎ»²»ÄÜÉèÖÃ¸ºÊı
+	//å¦‚æœä¸èƒ½åšç©ºï¼Œåˆ™ç›®æ ‡ä»“ä½ä¸èƒ½è®¾ç½®è´Ÿæ•°
 	if (!commInfo->canShort() && decimal::lt(qty, 0))
 	{
 		log_error("Cannot short on {}", stdCode);
@@ -589,7 +601,7 @@ void SelMocker::stra_set_position(const char* stdCode, double qty, const char* u
 	}
 
 	double total = stra_get_position(stdCode, false);
-	//Èç¹ûÄ¿±ê²ÖÎ»ºÍµ±Ç°²ÖÎ»ÊÇÒ»ÖÂµÄ£¬Ö±½ÓÍË³ö
+	//å¦‚æœç›®æ ‡ä»“ä½å’Œå½“å‰ä»“ä½æ˜¯ä¸€è‡´çš„ï¼Œç›´æ¥é€€å‡º
 	if (decimal::eq(total, qty))
 		return;
 
@@ -597,7 +609,7 @@ void SelMocker::stra_set_position(const char* stdCode, double qty, const char* u
 	{
 		double valid = stra_get_position(stdCode, true);
 		double frozen = total - valid;
-		//Èç¹ûÊÇT+1¹æÔò£¬ÔòÄ¿±ê²ÖÎ»²»ÄÜĞ¡ÓÚ¶³½á²ÖÎ»
+		//å¦‚æœæ˜¯T+1è§„åˆ™ï¼Œåˆ™ç›®æ ‡ä»“ä½ä¸èƒ½å°äºå†»ç»“ä»“ä½
 		if (decimal::lt(qty, frozen))
 		{
 			WTSLogger::log_dyn("strategy", _name.c_str(), LL_ERROR, 
@@ -643,15 +655,15 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 	if (commInfo == NULL)
 		return;
 
-	//³É½»¼Û
+	//æˆäº¤ä»·
 	double trdPx = curPx;
 	double diff = qty - pInfo._volume;
 	bool isBuy = decimal::gt(diff, 0.0);
-	if (decimal::gt(pInfo._volume*diff, 0))//µ±Ç°³Ö²ÖºÍ²ÖÎ»±ä¶¯·½ÏòÒ»ÖÂ,Ôö¼ÓÒ»ÌõÃ÷Ï¸,Ôö¼ÓÊıÁ¿¼´¿É
+	if (decimal::gt(pInfo._volume*diff, 0))//å½“å‰æŒä»“å’Œä»“ä½å˜åŠ¨æ–¹å‘ä¸€è‡´,å¢åŠ ä¸€æ¡æ˜ç»†,å¢åŠ æ•°é‡å³å¯
 	{
 		pInfo._volume = qty;
 
-		//Èç¹ûT+1£¬Ôò¶³½á²ÖÎ»ÒªÔö¼Ó
+		//å¦‚æœT+1ï¼Œåˆ™å†»ç»“ä»“ä½è¦å¢åŠ 
 		if (commInfo->isT1())
 		{
 			//ASSERT(diff>0);
@@ -661,17 +673,32 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 		if (_slippage != 0)
 		{
-			trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
+			if (_ratio_slippage)
+			{
+				//By Wesley @ 2023.05.05
+				//å¦‚æœæ˜¯æ¯”ç‡æ»‘ç‚¹ï¼Œåˆ™è¦æ ¹æ®ç›®æ ‡æˆäº¤ä»·è®¡ç®—
+				//å¾—åˆ°æ»‘ç‚¹ä»¥åï¼Œå†æ ¹æ®pricetickåšä¸€ä¸ªä¿®æ­£
+				double slp = (_slippage * trdPx / 10000.0);
+				slp = round(slp / commInfo->getPriceTick())*commInfo->getPriceTick();
+
+				trdPx += slp * (isBuy ? 1 : -1);
+			}
+			else
+				trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
 		}
 
 		DetailInfo dInfo;
 		dInfo._long = decimal::gt(qty, 0);
 		dInfo._price = trdPx;
+		dInfo._max_price = trdPx;
+		dInfo._min_price = trdPx;
 		dInfo._volume = abs(diff);
 		dInfo._opentime = curTm;
 		dInfo._opentdate = curTDate;
 		strcpy(dInfo._opentag, userTag);
+		dInfo._open_barno = _schedule_times;
 		pInfo._details.emplace_back(dInfo);
+		pInfo._last_entertime = curTm;
 
 		double fee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
 		_fund_info._total_fees += fee;
@@ -679,11 +706,25 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee);
 	}
 	else
-	{//³Ö²Ö·½ÏòºÍÄ¿±ê²ÖÎ»·½Ïò²»Ò»ÖÂ,ĞèÒªÆ½²Ö
+	{//æŒä»“æ–¹å‘å’Œç›®æ ‡ä»“ä½æ–¹å‘ä¸ä¸€è‡´,éœ€è¦å¹³ä»“
 		double left = abs(diff);
 		bool isBuy = decimal::gt(diff, 0.0);
+
 		if (_slippage != 0)
-			trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
+		{
+			if (_ratio_slippage)
+			{
+				//By Wesley @ 2023.05.05
+				//å¦‚æœæ˜¯æ¯”ç‡æ»‘ç‚¹ï¼Œåˆ™è¦æ ¹æ®ç›®æ ‡æˆäº¤ä»·è®¡ç®—
+				//å¾—åˆ°æ»‘ç‚¹ä»¥åï¼Œå†æ ¹æ®pricetickåšä¸€ä¸ªä¿®æ­£
+				double slp = (_slippage * trdPx / 10000.0);
+				slp = round(slp / commInfo->getPriceTick())*commInfo->getPriceTick();
+
+				trdPx += slp * (isBuy ? 1 : -1);
+			}
+			else
+				trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
+		}
 
 		pInfo._volume = qty;
 		if (decimal::eq(pInfo._volume, 0))
@@ -710,22 +751,23 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 				profit *= -1;
 
 			pInfo._closeprofit += profit;
-			pInfo._dynprofit = pInfo._dynprofit*dInfo._volume / (dInfo._volume + maxQty);//¸¡Ó¯Ò²Òª×öµÈ±ÈËõ·Å
+			pInfo._dynprofit = pInfo._dynprofit*dInfo._volume / (dInfo._volume + maxQty);//æµ®ç›ˆä¹Ÿè¦åšç­‰æ¯”ç¼©æ”¾
+			pInfo._last_exittime = curTm;
 			_fund_info._total_profit += profit;
 
 			double fee = _replayer->calc_fee(stdCode, trdPx, maxQty, dInfo._opentdate == curTDate ? 2 : 1);
 			_fund_info._total_fees += fee;
-			//ÕâÀïĞ´³É½»¼ÇÂ¼
+			//è¿™é‡Œå†™æˆäº¤è®°å½•
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, userTag, fee);
-			//ÕâÀïĞ´Æ½²Ö¼ÇÂ¼
+			//è¿™é‡Œå†™å¹³ä»“è®°å½•
 			log_close(stdCode, dInfo._long, dInfo._opentime, dInfo._price, curTm, 
-				trdPx, maxQty, profit, pInfo._closeprofit, dInfo._opentag, userTag);
+				trdPx, maxQty, profit, dInfo._max_profit, dInfo._max_loss, pInfo._closeprofit, dInfo._opentag, userTag, dInfo._open_barno, _schedule_times);
 
 			if (left == 0)
 				break;
 		}
 
-		//ĞèÒªÇåÀíµôÒÑ¾­Æ½²ÖÍêµÄÃ÷Ï¸
+		//éœ€è¦æ¸…ç†æ‰å·²ç»å¹³ä»“å®Œçš„æ˜ç»†
 		while (count > 0)
 		{
 			auto it = pInfo._details.begin();
@@ -733,12 +775,12 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 			count--;
 		}
 
-		//×îºó,Èç¹û»¹ÓĞÊ£ÓàµÄ,ÔòĞèÒª·´ÊÖÁË
+		//æœ€å,å¦‚æœè¿˜æœ‰å‰©ä½™çš„,åˆ™éœ€è¦åæ‰‹äº†
 		if (left > 0)
 		{
 			left = left * qty / abs(qty);
 
-			//Èç¹ûT+1£¬Ôò¶³½á²ÖÎ»ÒªÔö¼Ó
+			//å¦‚æœT+1ï¼Œåˆ™å†»ç»“ä»“ä½è¦å¢åŠ 
 			if (commInfo->isT1())
 			{
 				pInfo._frozen += left;
@@ -748,13 +790,17 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 			DetailInfo dInfo;
 			dInfo._long = decimal::gt(qty, 0);
 			dInfo._price = trdPx;
+			dInfo._max_price = trdPx;
+			dInfo._min_price = trdPx;
 			dInfo._volume = abs(left);
 			dInfo._opentime = curTm;
 			dInfo._opentdate = curTDate;
 			strcpy(dInfo._opentag, userTag);
+			dInfo._open_barno = _schedule_times;
 			pInfo._details.emplace_back(dInfo);
+			pInfo._last_entertime = curTm;
 
-			//ÕâÀï»¹ĞèÒªĞ´Ò»±Ê³É½»¼ÇÂ¼
+			//è¿™é‡Œè¿˜éœ€è¦å†™ä¸€ç¬”æˆäº¤è®°å½•
 			double fee = _replayer->calc_fee(stdCode, trdPx, abs(left), 0);
 			_fund_info._total_fees += fee;
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), userTag, fee);
@@ -822,8 +868,8 @@ void SelMocker::stra_sub_ticks(const char* code)
 {
 	/*
 	 *	By Wesley @ 2022.03.01
-	 *	Ö÷¶¯¶©ÔÄtick»áÔÚ±¾µØ¼ÇÒ»ÏÂ
-	 *	tickÊı¾İ»Øµ÷µÄÊ±ºòÏÈ¼ì²éÒ»ÏÂ
+	 *	ä¸»åŠ¨è®¢é˜…tickä¼šåœ¨æœ¬åœ°è®°ä¸€ä¸‹
+	 *	tickæ•°æ®å›è°ƒçš„æ—¶å€™å…ˆæ£€æŸ¥ä¸€ä¸‹
 	 */
 	_tick_subs.insert(code);
 
@@ -845,6 +891,10 @@ WTSSessionInfo* SelMocker::stra_get_sessinfo(const char* stdCode)
 	return _replayer->get_session_info(stdCode, true);
 }
 
+uint32_t SelMocker::stra_get_tdate()
+{
+	return _replayer->get_trading_date();
+}
 
 uint32_t SelMocker::stra_get_date()
 {
@@ -855,6 +905,24 @@ uint32_t SelMocker::stra_get_time()
 {
 	return _replayer->get_min_time();
 }
+
+double SelMocker::stra_get_fund_data(int flag)
+{
+	switch (flag)
+	{
+	case 0:
+		return _fund_info._total_profit - _fund_info._total_fees + _fund_info._total_dynprofit;
+	case 1:
+		return _fund_info._total_profit;
+	case 2:
+		return _fund_info._total_dynprofit;
+	case 3:
+		return _fund_info._total_fees;
+	default:
+		return 0.0;
+	}
+}
+
 
 void SelMocker::stra_log_info(const char* message)
 {
@@ -893,6 +961,15 @@ void SelMocker::stra_save_user_data(const char* key, const char* val)
 
 double SelMocker::stra_get_position(const char* stdCode, bool bOnlyValid/* = false*/, const char* userTag /* = "" */)
 {
+	//By Wesley @ 2023.04.17
+	//å¦‚æœæœ‰ä¿¡å·ï¼Œè¯´æ˜åˆšä¸‹äº†æŒ‡ä»¤ï¼Œè¿˜æ²¡ç­‰åˆ°ä¸‹ä¸€ä¸ªtickè¿›æ¥ï¼Œç”¨æˆ·å°±åœ¨è¯»å–ä»“ä½
+	//ä½†æ˜¯å¦‚æœç”¨æˆ·è¯»å–ï¼Œè¿˜æ˜¯è¦è¿”å›
+	auto sit = _sig_map.find(stdCode);
+	if (sit != _sig_map.end())
+	{
+		return sit->second._volume;
+	}
+
 	auto it = _pos_map.find(stdCode);
 	if (it == _pos_map.end())
 		return 0;
@@ -900,11 +977,11 @@ double SelMocker::stra_get_position(const char* stdCode, bool bOnlyValid/* = fal
 	const PosInfo& pInfo = it->second;
 	if (strlen(userTag) == 0)
 	{
-		//Ö»ÓĞuserTagÎª¿ÕµÄÊ±ºòÊ±ºò£¬²Å»áÓÃbOnlyValid
+		//åªæœ‰userTagä¸ºç©ºçš„æ—¶å€™æ—¶å€™ï¼Œæ‰ä¼šç”¨bOnlyValid
 		if (bOnlyValid)
 		{
-			//ÕâÀïÀíÂÛÉÏ£¬Ö»ÓĞ¶àÍ·²Å»á½øµ½ÕâÀï
-			//ÆäËûµØ·½Òª±£Ö¤£¬¿ÕÍ·³Ö²ÖµÄ»°£¬_frozenÒªÎª0
+			//è¿™é‡Œç†è®ºä¸Šï¼Œåªæœ‰å¤šå¤´æ‰ä¼šè¿›åˆ°è¿™é‡Œ
+			//å…¶ä»–åœ°æ–¹è¦ä¿è¯ï¼Œç©ºå¤´æŒä»“çš„è¯ï¼Œ_frozenè¦ä¸º0
 			return pInfo._volume - pInfo._frozen;
 		}
 		else
@@ -921,4 +998,173 @@ double SelMocker::stra_get_position(const char* stdCode, bool bOnlyValid/* = fal
 	}
 
 	return 0;
+}
+
+double SelMocker::stra_get_day_price(const char* stdCode, int flag /* = 0 */)
+{
+	if (_replayer)
+		return _replayer->get_day_price(stdCode, flag);
+
+	return 0.0;
+}
+
+uint64_t SelMocker::stra_get_first_entertime(const char* stdCode)
+{
+	auto it = _pos_map.find(stdCode);
+	if (it == _pos_map.end())
+		return 0;
+
+	const PosInfo& pInfo = it->second;
+	if (pInfo._details.empty())
+		return 0;
+
+	return pInfo._details[0]._opentime;
+}
+
+uint64_t SelMocker::stra_get_last_entertime(const char* stdCode)
+{
+	auto it = _pos_map.find(stdCode);
+	if (it == _pos_map.end())
+		return 0;
+
+	const PosInfo& pInfo = it->second;
+	if (pInfo._details.empty())
+		return 0;
+
+	return pInfo._details[pInfo._details.size() - 1]._opentime;
+}
+
+const char* SelMocker::stra_get_last_entertag(const char* stdCode)
+{
+	auto it = _pos_map.find(stdCode);
+	if (it == _pos_map.end())
+		return "";
+
+	const PosInfo& pInfo = it->second;
+	if (pInfo._details.empty())
+		return "";
+
+	return pInfo._details[pInfo._details.size() - 1]._opentag;
+}
+
+uint64_t SelMocker::stra_get_last_exittime(const char* stdCode)
+{
+	auto it = _pos_map.find(stdCode);
+	if (it == _pos_map.end())
+		return 0;
+
+	const PosInfo& pInfo = it->second;
+	return pInfo._last_exittime;
+}
+
+double SelMocker::stra_get_last_enterprice(const char* stdCode)
+{
+	auto it = _pos_map.find(stdCode);
+	if (it == _pos_map.end())
+		return 0;
+
+	const PosInfo& pInfo = it->second;
+	if (pInfo._details.empty())
+		return 0;
+
+	return pInfo._details[pInfo._details.size() - 1]._price;
+}
+
+double SelMocker::stra_get_position_avgpx(const char* stdCode)
+{
+	auto it = _pos_map.find(stdCode);
+	if (it == _pos_map.end())
+		return 0;
+
+	const PosInfo& pInfo = it->second;
+	if (pInfo._volume == 0)
+		return 0.0;
+
+	double amount = 0.0;
+	for (auto dit = pInfo._details.begin(); dit != pInfo._details.end(); dit++)
+	{
+		const DetailInfo& dInfo = *dit;
+		amount += dInfo._price*dInfo._volume;
+	}
+
+	return amount / pInfo._volume;
+}
+
+double SelMocker::stra_get_position_profit(const char* stdCode)
+{
+	auto it = _pos_map.find(stdCode);
+	if (it == _pos_map.end())
+		return 0;
+
+	const PosInfo& pInfo = it->second;
+	return pInfo._dynprofit;
+}
+
+uint64_t SelMocker::stra_get_detail_entertime(const char* stdCode, const char* userTag)
+{
+	auto it = _pos_map.find(stdCode);
+	if (it == _pos_map.end())
+		return 0;
+
+	const PosInfo& pInfo = it->second;
+	for (auto it = pInfo._details.begin(); it != pInfo._details.end(); it++)
+	{
+		const DetailInfo& dInfo = (*it);
+		if (strcmp(dInfo._opentag, userTag) != 0)
+			continue;
+
+		return dInfo._opentime;
+	}
+
+	return 0;
+}
+
+double SelMocker::stra_get_detail_cost(const char* stdCode, const char* userTag)
+{
+	auto it = _pos_map.find(stdCode);
+	if (it == _pos_map.end())
+		return 0;
+
+	const PosInfo& pInfo = it->second;
+	for (auto it = pInfo._details.begin(); it != pInfo._details.end(); it++)
+	{
+		const DetailInfo& dInfo = (*it);
+		if (strcmp(dInfo._opentag, userTag) != 0)
+			continue;
+
+		return dInfo._price;
+	}
+
+	return 0.0;
+}
+
+double SelMocker::stra_get_detail_profit(const char* stdCode, const char* userTag, int flag /* = 0 */)
+{
+	auto it = _pos_map.find(stdCode);
+	if (it == _pos_map.end())
+		return 0;
+
+	const PosInfo& pInfo = it->second;
+	for (auto it = pInfo._details.begin(); it != pInfo._details.end(); it++)
+	{
+		const DetailInfo& dInfo = (*it);
+		if (strcmp(dInfo._opentag, userTag) != 0)
+			continue;
+
+		switch (flag)
+		{
+		case 0:
+			return dInfo._profit;
+		case 1:
+			return dInfo._max_profit;
+		case -1:
+			return dInfo._max_loss;
+		case 2:
+			return dInfo._max_price;
+		case -2:
+			return dInfo._min_price;
+		}
+	}
+
+	return 0.0;
 }

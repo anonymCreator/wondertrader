@@ -1,4 +1,4 @@
-/*!
+ï»¿/*!
  * \file WtHftEngine.cpp
  * \project	WonderTrader
  *
@@ -25,15 +25,12 @@
 
 #include "../WTSTools/WTSLogger.h"
 
-#include <boost/asio.hpp>
-
-boost::asio::io_service g_asyncIO;
-
 USING_NS_WTP;
 
 WtUftEngine::WtUftEngine()
 	: _cfg(NULL)
 	, _tm_ticker(NULL)
+	, _notifier(NULL)
 {
 	TimeUtils::getDateTime(_cur_date, _cur_time);
 	_cur_secs = _cur_time % 100000;
@@ -169,18 +166,30 @@ double WtUftEngine::get_cur_price(const char* stdCode)
 	return ret;
 }
 
-void WtUftEngine::init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtUftDtMgr* dataMgr)
+void WtUftEngine::notify_params_update(const char* name)
+{
+	for(auto& v : _ctx_map)
+	{
+		const UftContextPtr& context = v.second;
+		if(strcmp(context->name(), name) == 0)
+		{
+			context->on_params_updated();
+			break;
+		}
+	}
+}
+
+void WtUftEngine::init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtUftDtMgr* dataMgr, EventNotifier* notifier)
 {
 	_base_data_mgr = bdMgr;
 	_data_mgr = dataMgr;
-
-	WTSLogger::info("Platform running mode: Production");
+	_notifier = notifier;
 
 	_cfg = cfg;
 	if(_cfg) _cfg->retain();
 }
 
-void WtUftEngine::run(bool bAsync /*= false*/)
+void WtUftEngine::run()
 {
 	for (auto it = _ctx_map.begin(); it != _ctx_map.end(); it++)
 	{
@@ -200,14 +209,6 @@ void WtUftEngine::run(bool bAsync /*= false*/)
 	}
 
 	_tm_ticker->run();
-
-	WTSLogger::info("WtUftEngine will run in {} mode", bAsync ? "async" : "sync");
-
-	if (!bAsync)
-	{
-		boost::asio::io_service::work work(g_asyncIO);
-		g_asyncIO.run();
-	}
 }
 
 void WtUftEngine::handle_push_quote(WTSTickData* newTick)
@@ -226,8 +227,8 @@ void WtUftEngine::handle_push_order_detail(WTSOrdDtlData* curOrdDtl)
 		for (auto it = sids.begin(); it != sids.end(); it++)
 		{
 			//By Wesley @ 2022.02.07
-			//Level2Êı¾İÒ»°ãÓÃÓÚHFT³¡¾°£¬ËùÒÔ²»×ö¸´È¨´¦Àí
-			//ËùÒÔ²»¶ÁÈ¡¶©ÔÄ±ê¼Ç
+			//Level2æ•°æ®ä¸€èˆ¬ç”¨äºHFTåœºæ™¯ï¼Œæ‰€ä»¥ä¸åšå¤æƒå¤„ç†
+			//æ‰€ä»¥ä¸è¯»å–è®¢é˜…æ ‡è®°
 			uint32_t sid = *it;
 			auto cit = _ctx_map.find(sid);
 			if (cit != _ctx_map.end())
@@ -249,8 +250,8 @@ void WtUftEngine::handle_push_order_queue(WTSOrdQueData* curOrdQue)
 		for (auto it = sids.begin(); it != sids.end(); it++)
 		{
 			//By Wesley @ 2022.02.07
-			//Level2Êı¾İÒ»°ãÓÃÓÚHFT³¡¾°£¬ËùÒÔ²»×ö¸´È¨´¦Àí
-			//ËùÒÔ²»¶ÁÈ¡¶©ÔÄ±ê¼Ç
+			//Level2æ•°æ®ä¸€èˆ¬ç”¨äºHFTåœºæ™¯ï¼Œæ‰€ä»¥ä¸åšå¤æƒå¤„ç†
+			//æ‰€ä»¥ä¸è¯»å–è®¢é˜…æ ‡è®°
 			uint32_t sid = *it;
 			auto cit = _ctx_map.find(sid);
 			if (cit != _ctx_map.end())
@@ -272,8 +273,8 @@ void WtUftEngine::handle_push_transaction(WTSTransData* curTrans)
 		for (auto it = sids.begin(); it != sids.end(); it++)
 		{
 			//By Wesley @ 2022.02.07
-			//Level2Êı¾İÒ»°ãÓÃÓÚHFT³¡¾°£¬ËùÒÔ²»×ö¸´È¨´¦Àí
-			//ËùÒÔ²»¶ÁÈ¡¶©ÔÄ±ê¼Ç
+			//Level2æ•°æ®ä¸€èˆ¬ç”¨äºHFTåœºæ™¯ï¼Œæ‰€ä»¥ä¸åšå¤æƒå¤„ç†
+			//æ‰€ä»¥ä¸è¯»å–è®¢é˜…æ ‡è®°
 			uint32_t sid = *it;
 			auto cit = _ctx_map.find(sid);
 			if (cit != _ctx_map.end())

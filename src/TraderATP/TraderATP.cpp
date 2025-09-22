@@ -1,4 +1,4 @@
-/*!
+ï»¿/*!
  * \file TraderATP.cpp
  * \project	WonderTrader
  *
@@ -15,6 +15,7 @@
 #include "../Includes/WTSTradeDef.hpp"
 #include "../Includes/WTSError.hpp"
 #include "../Includes/WTSVariant.hpp"
+#include "../Includes/WTSVersion.h"
 
 #include "../Share/ModuleHelper.hpp"
 
@@ -80,6 +81,9 @@ TraderATP::TraderATP()
 	, _bd_mgr(NULL)
 	, _tradingday(0)
 	, _close_flag(false)
+	, ayOrders(NULL)
+	, ayTrades(NULL)
+	, _return_nums(0)
 {
 
 }
@@ -117,6 +121,20 @@ inline WTSDirectionType wrapDirectionType(ATPSideType side, ATPPositionEffectTyp
 	}
 }
 
+inline ATPSideType wrapDirectionType(WTSDirectionType dirType, WTSOffsetType offsetType)
+{
+	if (WDT_LONG == dirType)
+		if (offsetType == WOT_OPEN)
+			return ATPSideConst::kBuy;
+		else
+			return ATPSideConst::kSell;
+	else
+		if (offsetType == WOT_OPEN)
+			return ATPSideConst::kSell;
+		else
+			return ATPSideConst::kBuy;
+}
+
 inline WTSOffsetType wrapOffsetType(const ATPPositionEffectType dirType)
 {
 	if (dirType == ATPPositionEffectConst::kOpen)
@@ -125,23 +143,39 @@ inline WTSOffsetType wrapOffsetType(const ATPPositionEffectType dirType)
 		return WOT_CLOSE;
 }
 
+inline ATPPositionEffectType wrapOffsetType(WTSOffsetType offType)
+{
+	if (WOT_OPEN == offType)
+		return ATPPositionEffectConst::kOpen;
+	else if (WOT_CLOSE == offType)
+		return ATPPositionEffectConst::kClose;
+	else if (WOT_CLOSETODAY == offType)
+		return ATPPositionEffectConst::kClose;
+	else if (WOT_CLOSEYESTERDAY == offType)
+		return ATPPositionEffectConst::kClose;
+	else
+		return ATPPositionEffectConst::kDefault;
+}
+
 inline ATPOrdTypeType wrapOrdType(WTSPriceType priceType, WTSOrderFlag flag)
 {
 
 	if (WPT_LIMITPRICE == priceType && flag == WOF_NOR)
-		return ATPOrdTypeConst::kFixedNew;  // ÏŞ¼ÛÎ¯ÍĞ¡¢ÔöÇ¿ÏŞ¼Û
+		return ATPOrdTypeConst::kFixedNew;  // é™ä»·å§”æ‰˜ã€å¢å¼ºé™ä»·
 
 	if (WPT_LIMITPRICE == priceType && flag == WOF_FOK)
-		return ATPOrdTypeConst::kFixedFullDealOrCancel;  // ÏŞ¼ÛÈ«¶î³É½»»ò³·Ïú
+		return ATPOrdTypeConst::kFixedFullDealOrCancel;  // é™ä»·å…¨é¢æˆäº¤æˆ–æ’¤é”€
 
 	if (WPT_ANYPRICE == priceType && flag == WOF_NOR)
-		return ATPOrdTypeConst::kMarketTransferFixed;  // ÊĞ¼ÛÊ£Óà×ªÏŞ¼Û
+		return ATPOrdTypeConst::kMarketTransferFixed;  // å¸‚ä»·å‰©ä½™è½¬é™ä»·
 
 	if (WPT_ANYPRICE == priceType && flag == WOF_FAK)
-		return ATPOrdTypeConst::kImmediateDealTransferCancel;  // Á¢¼´³É½»Ê£Óà³·Ïú
+		return ATPOrdTypeConst::kImmediateDealTransferCancel;  // ç«‹å³æˆäº¤å‰©ä½™æ’¤é”€
 
 	if (WPT_ANYPRICE == priceType && flag == WOF_FOK)
-		return ATPOrdTypeConst::kFullDealOrCancel;  // È«¶î³É½»»ò³·Ïú
+		return ATPOrdTypeConst::kFullDealOrCancel;  // å…¨é¢æˆäº¤æˆ–æ’¤é”€
+
+	return ATPOrdTypeConst::kDefault;
 }
 
 inline WTSPriceType wrapOrdType(ATPOrdTypeType ordType)
@@ -154,6 +188,24 @@ inline WTSPriceType wrapOrdType(ATPOrdTypeType ordType)
 		return WPT_BESTPRICE;
 	else
 		return WPT_LASTPRICE;
+}
+
+inline ATPLoginModeType wrapLoginMode(int loginMode)
+{
+	ATPLoginModeType login_mode;
+	switch (loginMode)
+	{
+	case 1:
+		login_mode = ATPCustLoginModeType::kCustIDMode;  // å®¢æˆ·å·ç™»å½•
+	case 2:
+		login_mode = ATPCustLoginModeType::kFundAccountIDMode;  // èµ„é‡‘è´¦æˆ·ç™»å½•æ¨¡å¼
+	case 3:
+		login_mode = ATPCustLoginModeType::kAccountIDMode;  // è¯åˆ¸è´¦æˆ·ç™»å½•
+	default:
+		break;
+	}
+
+	return login_mode;
 }
 
 inline WTSOrderState wrapOrdStatus(ATPOrdStatusType orderState)
@@ -182,12 +234,9 @@ inline WTSOrderState wrapOrdStatus(ATPOrdStatusType orderState)
 
 WTSEntrust* TraderATP::makeEntrust(const ATPRspOrderStatusAckMsg* order_info)
 {
-	std::string code, exchg;
-	if (order_info->market_id == ATPMarketIDConst::kShangHai)
-		exchg = "SSE";
-	else
-		exchg = "SZSE";
-	code = order_info->security_id;
+	const std::string code(order_info->security_id);
+	const std::string exchg = (order_info->market_id == ATPMarketIDConst::kShangHai) ? "SSE" : "SZSE";
+
 	WTSContractInfo* ct = _bd_mgr->getContract(code.c_str(), exchg.c_str());
 	if (ct == NULL)
 		return NULL;
@@ -214,13 +263,9 @@ WTSEntrust* TraderATP::makeEntrust(const ATPRspOrderStatusAckMsg* order_info)
 
 WTSOrderInfo* TraderATP::makeOrderInfo(const APIOrderUnit* order_info)
 {
-	std::string code, exchg;
-	if (order_info->market_id == 101)
-		exchg = "SSE";
-	else if (order_info->market_id == 102)
-		exchg = "SZSE";
+	const std::string code(order_info->security_id);
+	const std::string exchg = (order_info->market_id == ATPMarketIDConst::kShangHai) ? "SSE" : "SZSE";
 
-	code = order_info->security_id;
 	WTSContractInfo* contract = _bd_mgr->getContract(code.c_str(), exchg.c_str());
 	if (contract == NULL)
 		return NULL;
@@ -232,7 +277,7 @@ WTSOrderInfo* TraderATP::makeOrderInfo(const APIOrderUnit* order_info)
 	pRet->setDirection(wrapATPSide(order_info->side));
 	pRet->setPriceType(wrapOrdType(order_info->ord_type));
 	pRet->setOrderFlag(WOF_NOR);
-	//pRet->setOffsetType(wrapOffsetType(order_info->posi));
+	//pRet->setOffsetType(wrapOffsetType(order_info->p));
 
 	pRet->setVolTraded((uint32_t)order_info->cum_qty / 100);
 	pRet->setVolLeft((uint32_t)order_info->leaves_qty / 100);
@@ -252,7 +297,7 @@ WTSOrderInfo* TraderATP::makeOrderInfo(const APIOrderUnit* order_info)
 	//pRet->setEntrustID(genEntrustID(pRet->getEntrustID(), order_info->client_seq_id).c_str());
 	pRet->setOrderID(fmt::format("{}", order_info->cl_ord_no).c_str());
 
-	pRet->setStateMsg("");
+	pRet->setStateMsg(order_info->ord_rej_reason);
 
 	const char* usertag = m_eidCache.get(pRet->getEntrustID());
 	if (strlen(usertag) == 0)
@@ -276,12 +321,9 @@ WTSOrderInfo* TraderATP::makeOrderInfo(const APIOrderUnit* order_info)
 
 WTSOrderInfo* TraderATP::makeOrderInfo(const ATPRspOrderStatusAckMsg *order_status_ack)
 {
-	std::string code, exchg;
-	if (order_status_ack->market_id == ATPMarketIDConst::kShangHai)
-		exchg = "SSE";
-	else
-		exchg = "SZSE";
-	code = order_status_ack->security_id;
+	const std::string code(order_status_ack->security_id);
+	const std::string exchg = (order_status_ack->market_id == ATPMarketIDConst::kShangHai) ? "SSE" : "SZSE";
+
 	WTSContractInfo* contract = _bd_mgr->getContract(code.c_str(), exchg.c_str());
 	if (contract == NULL)
 		return NULL;
@@ -306,16 +348,15 @@ WTSOrderInfo* TraderATP::makeOrderInfo(const ATPRspOrderStatusAckMsg *order_stat
 	pRet->setOrderTime(TimeUtils::makeTime(pRet->getOrderDate(), uTime));
 
 	pRet->setOrderState(wrapOrdStatus(order_status_ack->ord_status));
-	if (order_status_ack->ord_status == ATPOrdStatusConst::kReject || order_status_ack->ord_status == ATPOrdStatusConst::kUnSend) {
+	if (order_status_ack->ord_status == ATPOrdStatusConst::kReject) {
 		pRet->setError(true);
-		pRet->setOrderState(WOS_Canceled);
+		//pRet->setOrderState(WOS_Canceled);
 	}
 
 	genEntrustID(pRet->getEntrustID(), order_status_ack->client_seq_id);
 	fmtutil::format_to(pRet->getOrderID(), "{}", order_status_ack->cl_ord_no);
 
-	pRet->setStateMsg("");
-	std::cout << "cl ord no: " << pRet->getOrderID() << std::endl;
+	pRet->setStateMsg(order_status_ack->ord_rej_reason);
 
 	const char* usertag = m_eidCache.get(pRet->getEntrustID());
 	if (strlen(usertag) == 0)
@@ -339,13 +380,9 @@ WTSOrderInfo* TraderATP::makeOrderInfo(const ATPRspOrderStatusAckMsg *order_stat
 
 WTSTradeInfo* TraderATP::makeTradeInfo(const APITradeOrderUnit* trade_info)
 {
-	std::string code, exchg;
-	if (trade_info->market_id == ATPMarketIDConst::kShangHai)
-		exchg = "SSE";
-	else if (trade_info->market_id == ATPMarketIDConst::kShenZhen)
-		exchg = "SZSE";
+	const std::string code(trade_info->security_id);
+	const std::string exchg = (trade_info->market_id == ATPMarketIDConst::kShangHai) ? "SSE" : "SZSE";
 
-	code = trade_info->security_id;
 	WTSContractInfo* contract = _bd_mgr->getContract(code.c_str(), exchg.c_str());
 	if (contract == NULL)
 		return NULL;
@@ -379,20 +416,16 @@ WTSTradeInfo* TraderATP::makeTradeInfo(const APITradeOrderUnit* trade_info)
 
 WTSTradeInfo* TraderATP::makeTradeRecord(const ATPRspCashAuctionTradeERMsg *cash_auction_trade_er)
 {
-	std::string code, exchg;
-	if (cash_auction_trade_er->market_id == ATPMarketIDConst::kShangHai)
-		exchg = "SSE";
-	else if (cash_auction_trade_er->market_id == ATPMarketIDConst::kShenZhen)
-		exchg = "SZSE";
+	const std::string code(cash_auction_trade_er->security_id);
+	const std::string exchg = (cash_auction_trade_er->market_id == ATPMarketIDConst::kShangHai) ? "SSE" : "SZSE";
 
-	code = cash_auction_trade_er->security_id;
 	WTSContractInfo* contract = _bd_mgr->getContract(code.c_str(), exchg.c_str());
 	if (contract == NULL)
 		return NULL;
 
 	WTSTradeInfo *pRet = WTSTradeInfo::create(code.c_str(), exchg.c_str());
-	pRet->setVolume((uint32_t)cash_auction_trade_er->last_qty / 100);  // ³É½»ÊıÁ¿
-	pRet->setPrice(cash_auction_trade_er->last_px / 10000.0);  // ³É½»¼Û¸ñ
+	pRet->setVolume((uint32_t)cash_auction_trade_er->last_qty / 100);  // æˆäº¤æ•°é‡
+	pRet->setPrice(cash_auction_trade_er->last_px / 10000.0);  // æˆäº¤ä»·æ ¼
 	pRet->setTradeID(cash_auction_trade_er->exec_id);
 	pRet->setContractInfo(contract);
 
@@ -408,7 +441,7 @@ WTSTradeInfo* TraderATP::makeTradeRecord(const ATPRspCashAuctionTradeERMsg *cash
 	fmtutil::format_to(pRet->getRefOrder(), "{}", cash_auction_trade_er->cl_ord_id);
 	pRet->setTradeType(WTT_Common);
 
-	double amount = cash_auction_trade_er->total_value_traded / 10000.0;   //³É½»½ğ¶î
+	double amount = cash_auction_trade_er->total_value_traded / 10000.0;   //æˆäº¤é‡‘é¢
 	pRet->setAmount(amount);
 
 	const char* usertag = m_oidCache.get(StrUtil::trim(pRet->getRefOrder()).c_str());
@@ -423,7 +456,7 @@ void TraderATP::OnLogin(const std::string& reason)
 	if (_sink)
 		_sink->handleEvent(WTE_Connect, 0);
 
-	_state = TS_LOGINED;  // ÒÑµÇÂ¼
+	_state = TS_LOGINED;  // å·²ç™»å½•
 	write_log(_sink, LL_WARN, "[TraderATP] {} login success: {}...", _user, reason);
 }
 
@@ -477,29 +510,16 @@ void TraderATP::OnEndOfConnection(const std::string& reason)
 
 void TraderATP::OnRspCustLoginResp(const ATPRspCustLoginRespOtherMsg &cust_login_resp)
 {
-	std::cout << "OnRspCustLoginResp Recv:" << static_cast<uint32_t>(cust_login_resp.permisson_error_code) << std::endl;
-
-	std::cout << "cust_login_resp : " << std::endl;
-	std::cout << "client_seq_id : " << cust_login_resp.client_seq_id <<
-		" transact_time : " << cust_login_resp.transact_time <<
-		" cust_id : " << cust_login_resp.cust_id <<
-		" permisson_error_code : " << cust_login_resp.permisson_error_code <<
-		" user_info : " << cust_login_resp.user_info << std::endl;
 	//std::vector<APIMsgCustLoginRespFundAccountUnit>::iterator it;
 	//std::vector<APIMsgCustLoginRespAccountUnit>::iterator it_1;
 	int i = 1, j = 1;
 	for (auto it = cust_login_resp.fund_account_array.begin();
 		it != cust_login_resp.fund_account_array.end(); it++)
 	{
-		std::cout << " fund_account_array_" << i << " : " << std::endl;
-		std::cout << " branch_id : " << it->fund_account_id <<
-			" fund_account_id : " << it->branch_id << std::endl;
 		for (auto it_1 = it->account_array.begin();
 			it_1 != it->account_array.end(); it_1++)
 		{
-			std::cout << " account_array_" << i << "_" << j << " : " << std::endl;
-			std::cout << " account_id : " << it_1->account_id <<
-				" market_id : " << it_1->market_id << std::endl;
+			write_log(_sink, LL_INFO, "[TraderATP][{}] OnRspCustLoginRsp: fund_account_id: {}, branch_id: {}, market_id: {}", it_1->account_id, it->fund_account_id, it->branch_id, it_1->market_id);
 
 			j++;
 		}
@@ -512,7 +532,7 @@ void TraderATP::OnRspCustLoginResp(const ATPRspCustLoginRespOtherMsg &cust_login
 		_cust_id = cust_login_resp.cust_id;
 
 		{
-			//³õÊ¼»¯Î¯ÍĞµ¥»º´æÆ÷
+			//åˆå§‹åŒ–å§”æ‰˜å•ç¼“å­˜å™¨
 			std::stringstream ss;
 			ss << "./atpdata/local/";
 			std::string path = StrUtil::standardisePath(ss.str());
@@ -525,7 +545,7 @@ void TraderATP::OnRspCustLoginResp(const ATPRspCustLoginRespOtherMsg &cust_login
 		}
 
 		{
-			//³õÊ¼»¯¶©µ¥±ê¼Ç»º´æÆ÷
+			//åˆå§‹åŒ–è®¢å•æ ‡è®°ç¼“å­˜å™¨
 			std::stringstream ss;
 			ss << "./atpdata/local/";
 			std::string path = StrUtil::standardisePath(ss.str());
@@ -541,7 +561,7 @@ void TraderATP::OnRspCustLoginResp(const ATPRspCustLoginRespOtherMsg &cust_login
 			_sink->onLoginResult(true, "", _tradingday);
 		_state = TS_ALLREADY;
 
-		std::cout << "CustLogin Success!" << std::endl;
+		write_log(_sink, LL_INFO, "[TraderATP] CustLogin Success!");
 	}
 	else
 	{
@@ -549,72 +569,41 @@ void TraderATP::OnRspCustLoginResp(const ATPRspCustLoginRespOtherMsg &cust_login
 			_sink->onLoginResult(false, fmt::format("{}", cust_login_resp.permisson_error_code).c_str(), _tradingday);
 		_state = TS_ALLREADY;
 
-		std::cout << "CustLogin Fail, permisson_error_code :" << static_cast<uint32_t>(cust_login_resp.permisson_error_code) << std::endl;
+		write_log(_sink, LL_ERROR, "[TraderATP] CustLogin Fail, code : {}", static_cast<uint32_t>(cust_login_resp.permisson_error_code));
 	}
 }
 
 void TraderATP::OnRspCustLogoutResp(const ATPRspCustLogoutRespOtherMsg &cust_logout_resp)
 {
-	std::cout << "OnRspCustLogoutResp Recv:" << static_cast<uint32_t>(cust_logout_resp.permisson_error_code) << std::endl;
-
 	if (cust_logout_resp.permisson_error_code == 0)
 	{
 		_state = TS_NOTLOGIN;
 		if (_sink)
 			_sink->onLogout();
 
-		std::cout << "CustLogout Success!" << std::endl;
+		write_log(_sink, LL_INFO, "[TraderATP][{}] CustLogout Success!", cust_logout_resp.account_id);
 	}
 	else
 	{
-		write_log(_sink, LL_ERROR, "[TraderATP] Logout failed: {}", static_cast<uint32_t>(cust_logout_resp.permisson_error_code));
+		write_log(_sink, LL_ERROR, "[TraderATP][{}] Logout failed: {}", cust_logout_resp.account_id, static_cast<uint32_t>(cust_logout_resp.permisson_error_code));
 	}
 }
 
-// ¶©µ¥ÏÂ´ïÄÚ²¿ÏìÓ¦
+// è®¢å•ä¸‹è¾¾å†…éƒ¨å“åº”
 void TraderATP::OnRspOrderStatusInternalAck(const ATPRspOrderStatusAckMsg& order_status_ack)
 {
-	std::cout << "order_status_ack : " << std::endl;
-	std::cout << "partition : " << (int32_t)order_status_ack.partition <<
-		" index : " << order_status_ack.index <<
-		" business_type : " << (int32_t)order_status_ack.business_type <<
-		" cl_ord_no : " << order_status_ack.cl_ord_no <<
-		" security_id : " << order_status_ack.security_id <<
-		" market_id : " << order_status_ack.market_id <<
-		" exec_type : " << order_status_ack.exec_type <<
-		" ord_status : " << (int32_t)order_status_ack.ord_status <<
-		" cust_id : " << order_status_ack.cust_id <<
-		" fund_account_id : " << order_status_ack.fund_account_id <<
-		" account_id : " << order_status_ack.account_id <<
-		" price : " << order_status_ack.price <<
-		" order_qty : " << order_status_ack.order_qty <<
-		" leaves_qty : " << order_status_ack.leaves_qty <<
-		" cum_qty : " << order_status_ack.cum_qty <<
-		" side : " << order_status_ack.side <<
-		" transact_time : " << order_status_ack.transact_time <<
-		" user_info : " << order_status_ack.user_info <<
-		" order_id : " << order_status_ack.order_id <<
-		" cl_ord_id : " << order_status_ack.cl_ord_id <<
-		" client_seq_id : " << order_status_ack.client_seq_id <<
-		" orig_cl_ord_no : " << order_status_ack.orig_cl_ord_no <<
-		" frozen_trade_value : " << order_status_ack.frozen_trade_value <<
-		" frozen_fee : " << order_status_ack.frozen_fee <<
-		" reject_reason_code : " << order_status_ack.reject_reason_code <<
-		" ord_rej_reason : " << order_status_ack.ord_rej_reason <<
-		" order_type : " << order_status_ack.order_type <<
-		" time_in_force : " << order_status_ack.time_in_force <<
-		" position_effect : " << order_status_ack.position_effect <<
-		" covered_or_uncovered : " << (int32_t)order_status_ack.covered_or_uncovered <<
-		" account_sub_code : " << order_status_ack.account_sub_code << std::endl;
+	write_log(_sink, LL_INFO, "[TraderATP][{}] cl_ord_no: {}, security_id: {}, ord_status: {}, price: {}, order_qty: {}, leaves_qty: {}, cum_qty: {}, cl_ord_id: {}, order_type: {}", order_status_ack.account_id,
+		order_status_ack.cl_ord_no, order_status_ack.security_id, (int32_t)order_status_ack.ord_status, order_status_ack.price, order_status_ack.order_qty, order_status_ack.leaves_qty,
+		order_status_ack.cum_qty, order_status_ack.cl_ord_id, order_status_ack.order_type);
 
 	if (order_status_ack.reject_reason_code != ATPRejectReasonCodeConst::kNormal)
 	{
 		WTSEntrust* entrust = makeEntrust(&order_status_ack);
 
-		if (order_status_ack.ord_status == ATPOrdStatusConst::kWaitCancelled)
+		if (order_status_ack.orig_cl_ord_no != 0)  // å¯ä»¥æ ¹æ®orig_cl_ord_noæ˜¯å¦ä¸º0æ¥åˆ¤æ–­æ˜¯å¦ä¸ºæ’¤å•å§”æ‰˜ï¼Œéœ€è¦æ³¨æ„æ’¤å•ä¼ å…¥çš„orig_cl_ord_noä¸èƒ½ä¸º0
 		{
-			// ¶ÔÓ¦³·µ¥»Øµ÷
-			std::cout << "cancelling order error: " << order_status_ack.cl_ord_no << "ord rej reason: " << order_status_ack.ord_rej_reason << std::endl;
+			// å¯¹åº”æ’¤å•å›è°ƒ
+			write_log(_sink, LL_ERROR, "[TraderATP][{}] Cancelling order error, cl_ord_no: {}, orig_cl_ord_no: {}, reject code: {}, reject reason: {}", order_status_ack.account_id, order_status_ack.cl_ord_no, order_status_ack.orig_cl_ord_no, order_status_ack.reject_reason_code, order_status_ack.ord_rej_reason);
 			WTSError* error = WTSError::create(WEC_ORDERCANCEL, order_status_ack.ord_rej_reason);
 			_sink->onRspEntrust(entrust, error);
 			error->release();
@@ -623,7 +612,7 @@ void TraderATP::OnRspOrderStatusInternalAck(const ATPRspOrderStatusAckMsg& order
 		}
 		else
 		{
-			std::cout << "insert order error: " << order_status_ack.cl_ord_no << "ord rej reason: " << order_status_ack.ord_rej_reason << std::endl;
+			write_log(_sink, LL_INFO, "[TraderATP][{}] Inserting order error, cl_ord_no: {}, orig_cl_ord_no: {}, reject code: {}, reject reason: {}", order_status_ack.account_id, order_status_ack.cl_ord_no, order_status_ack.orig_cl_ord_no, order_status_ack.reject_reason_code, order_status_ack.ord_rej_reason);
 			WTSError* error = WTSError::create(WEC_ORDERINSERT, order_status_ack.ord_rej_reason);
 			_sink->onRspEntrust(entrust, error);
 			error->release();
@@ -633,6 +622,8 @@ void TraderATP::OnRspOrderStatusInternalAck(const ATPRspOrderStatusAckMsg& order
 	}
 	else
 	{
+		write_log(_sink, LL_INFO, "[TraderATP][{}] Order success, cl_ord_no: {}, orig_cl_ord_no: {}, reject code: {}, reject reason: {}", order_status_ack.account_id, order_status_ack.cl_ord_no, order_status_ack.orig_cl_ord_no, order_status_ack.reject_reason_code, order_status_ack.ord_rej_reason);
+
 		WTSOrderInfo *orderInfo = makeOrderInfo(&order_status_ack);
 		if (orderInfo)
 		{
@@ -647,60 +638,27 @@ void TraderATP::OnRspOrderStatusInternalAck(const ATPRspOrderStatusAckMsg& order
 
 				orderInfo->release();
 			});
-
-			std::cout << "push order into sink: " << order_status_ack.cl_ord_no << std::endl;
 		}
 	}
 
-	// ±£´æ»Ø±¨·ÖÇøºÅ¡¢ĞòºÅ£¬ÓÃÓÚ¶ÏÏßÖØÁ¬Ê±Ö¸¶¨ÒÑÊÕµ½×îĞÂ»Ø±¨ĞòºÅ
+	// ä¿å­˜å›æŠ¥åˆ†åŒºå·ã€åºå·ï¼Œç”¨äºæ–­çº¿é‡è¿æ—¶æŒ‡å®šå·²æ”¶åˆ°æœ€æ–°å›æŠ¥åºå·
 	report_sync[order_status_ack.partition] = order_status_ack.index;
 }
 
-// ¶©µ¥ÏÂ´ï½»Ò×ËùÈ·ÈÏ
+// è®¢å•ä¸‹è¾¾äº¤æ˜“æ‰€ç¡®è®¤
 void TraderATP::OnRspOrderStatusAck(const ATPRspOrderStatusAckMsg& order_status_ack)
 {
-	std::cout << "order_status_ack : " << std::endl;
-	std::cout << "partition : " << (int32_t)order_status_ack.partition <<
-		" index : " << order_status_ack.index <<
-		" business_type : " << (int32_t)order_status_ack.business_type <<
-		" cl_ord_no : " << order_status_ack.cl_ord_no <<
-		" security_id : " << order_status_ack.security_id <<
-		" market_id : " << order_status_ack.market_id <<
-		" exec_type : " << order_status_ack.exec_type <<
-		" ord_status : " << (int32_t)order_status_ack.ord_status <<
-		" cust_id : " << order_status_ack.cust_id <<
-		" fund_account_id : " << order_status_ack.fund_account_id <<
-		" account_id : " << order_status_ack.account_id <<
-		" price : " << order_status_ack.price <<
-		" order_qty : " << order_status_ack.order_qty <<
-		" leaves_qty : " << order_status_ack.leaves_qty <<
-		" cum_qty : " << order_status_ack.cum_qty <<
-		" side : " << order_status_ack.side <<
-		" transact_time : " << order_status_ack.transact_time <<
-		" user_info : " << order_status_ack.user_info <<
-		" order_id : " << order_status_ack.order_id <<
-		" cl_ord_id : " << order_status_ack.cl_ord_id <<
-		" client_seq_id : " << order_status_ack.client_seq_id <<
-		" orig_cl_ord_no : " << order_status_ack.orig_cl_ord_no <<
-		" frozen_trade_value : " << order_status_ack.frozen_trade_value <<
-		" frozen_fee : " << order_status_ack.frozen_fee <<
-		" reject_reason_code : " << order_status_ack.reject_reason_code <<
-		" ord_rej_reason : " << order_status_ack.ord_rej_reason <<
-		" order_type : " << order_status_ack.order_type <<
-		" time_in_force : " << order_status_ack.time_in_force <<
-		" position_effect : " << order_status_ack.position_effect <<
-		" covered_or_uncovered : " << (int32_t)order_status_ack.covered_or_uncovered <<
-		" account_sub_code : " << order_status_ack.account_sub_code <<
-		" quote_flag:" << (int32_t)order_status_ack.quote_flag << std::endl;
+	write_log(_sink, LL_INFO, "[OnRspOrderStatusAck][{}] account_id: {}, cl_ord_no: {}, code: {}, price: {}, order_qty: {}, ord_status: {}, side: {}", order_status_ack.account_id, order_status_ack.account_id,
+		order_status_ack.cl_ord_no, order_status_ack.security_id, order_status_ack.price, order_status_ack.order_qty, (int32_t)order_status_ack.ord_status, order_status_ack.side);
 
 	if (order_status_ack.reject_reason_code != ATPRejectReasonCodeConst::kNormal)
 	{
 		WTSEntrust* entrust = makeEntrust(&order_status_ack);
 
-		if (order_status_ack.ord_status == ATPOrdStatusConst::kWaitCancelled)
+		if (order_status_ack.orig_cl_ord_no != 0)  // å¯ä»¥æ ¹æ®orig_cl_ord_noæ˜¯å¦ä¸º0æ¥åˆ¤æ–­æ˜¯å¦ä¸ºæ’¤å•å§”æ‰˜ï¼Œéœ€è¦æ³¨æ„æ’¤å•ä¼ å…¥çš„orig_cl_ord_noä¸èƒ½ä¸º0
 		{
-			// ¶ÔÓ¦³·µ¥»Øµ÷
-			std::cout << "cancelling order error: " << order_status_ack.cl_ord_id << "ord rej reason: " << order_status_ack.ord_rej_reason << std::endl;
+			// å¯¹åº”æ’¤å•å›è°ƒ
+			write_log(_sink, LL_ERROR, "[OnRspOrderStatusAck][{}] Cancelling order error, cl_ord_no: {}, orig_cl_ord_no: {}, reject code: {}, reject reason: {}", order_status_ack.account_id, order_status_ack.cl_ord_no, order_status_ack.orig_cl_ord_no, order_status_ack.reject_reason_code, order_status_ack.ord_rej_reason);
 			WTSError* error = WTSError::create(WEC_ORDERCANCEL, order_status_ack.ord_rej_reason);
 			_sink->onRspEntrust(entrust, error);
 			error->release();
@@ -709,7 +667,7 @@ void TraderATP::OnRspOrderStatusAck(const ATPRspOrderStatusAckMsg& order_status_
 		}
 		else
 		{
-			std::cout << "inserting order error: " << order_status_ack.cl_ord_id << "ord rej reason: " << order_status_ack.ord_rej_reason << std::endl;
+			write_log(_sink, LL_ERROR, "[OnRspOrderStatusAck][{}] Inserting order error, cl_ord_no: {}, orig_cl_ord_no: {}, reject code: {}, reject reason: {}", order_status_ack.account_id, order_status_ack.cl_ord_no, order_status_ack.orig_cl_ord_no, order_status_ack.reject_reason_code, order_status_ack.ord_rej_reason);
 			WTSError* error = WTSError::create(WEC_ORDERINSERT, order_status_ack.ord_rej_reason);
 			_sink->onRspEntrust(entrust, error);
 			error->release();
@@ -719,6 +677,8 @@ void TraderATP::OnRspOrderStatusAck(const ATPRspOrderStatusAckMsg& order_status_
 	}
 	else
 	{
+		write_log(_sink, LL_INFO, "[OnRspOrderStatusAck][{}] Order success, cl_ord_no: {}, orig_cl_ord_no: {}, reject code: {}, reject reason: {}", order_status_ack.account_id, order_status_ack.cl_ord_no, order_status_ack.orig_cl_ord_no, order_status_ack.reject_reason_code, order_status_ack.ord_rej_reason);
+
 		WTSOrderInfo *orderInfo = makeOrderInfo(&order_status_ack);
 		if (orderInfo)
 		{
@@ -736,40 +696,16 @@ void TraderATP::OnRspOrderStatusAck(const ATPRspOrderStatusAckMsg& order_status_
 		}
 	}
 
-	// ±£´æ»Ø±¨·ÖÇøºÅ¡¢ĞòºÅ£¬ÓÃÓÚ¶ÏÏßÖØÁ¬Ê±Ö¸¶¨ÒÑÊÕµ½×îĞÂ»Ø±¨ĞòºÅ
+	// ä¿å­˜å›æŠ¥åˆ†åŒºå·ã€åºå·ï¼Œç”¨äºæ–­çº¿é‡è¿æ—¶æŒ‡å®šå·²æ”¶åˆ°æœ€æ–°å›æŠ¥åºå·
 	report_sync[order_status_ack.partition] = order_status_ack.index;
 }
 
-// ³É½»»Ø±¨
+// æˆäº¤å›æŠ¥
 void TraderATP::OnRspCashAuctionTradeER(const ATPRspCashAuctionTradeERMsg& cash_auction_trade_er)
 {
-	std::cout << "cash_auction_trade_er : " << std::endl;
-	std::cout << "partition : " << (int32_t)cash_auction_trade_er.partition <<
-		" index : " << cash_auction_trade_er.index <<
-		" business_type : " << (int32_t)cash_auction_trade_er.business_type <<
-		" cl_ord_no : " << cash_auction_trade_er.cl_ord_no <<
-		" security_id : " << cash_auction_trade_er.security_id <<
-		" market_id : " << cash_auction_trade_er.market_id <<
-		" exec_type : " << cash_auction_trade_er.exec_type <<
-		" ord_status : " << (int32_t)cash_auction_trade_er.ord_status <<
-		" cust_id : " << cash_auction_trade_er.cust_id <<
-		" fund_account_id : " << cash_auction_trade_er.fund_account_id <<
-		" account_id : " << cash_auction_trade_er.account_id <<
-		" price : " << cash_auction_trade_er.price <<
-		" order_qty : " << cash_auction_trade_er.order_qty <<
-		" leaves_qty : " << cash_auction_trade_er.leaves_qty <<
-		" cum_qty : " << cash_auction_trade_er.cum_qty <<
-		" side : " << cash_auction_trade_er.side <<
-		" transact_time : " << cash_auction_trade_er.transact_time <<
-		" user_info : " << cash_auction_trade_er.user_info <<
-		" order_id : " << cash_auction_trade_er.order_id <<
-		" cl_ord_id : " << cash_auction_trade_er.cl_ord_id <<
-		" exec_id : " << cash_auction_trade_er.exec_id <<
-		" last_px : " << cash_auction_trade_er.last_px <<
-		" last_qty : " << cash_auction_trade_er.last_qty <<
-		" total_value_traded : " << cash_auction_trade_er.total_value_traded <<
-		" fee : " << cash_auction_trade_er.fee <<
-		" cash_margin : " << cash_auction_trade_er.cash_margin << std::endl;
+	write_log(_sink, LL_INFO, "[OnRspCashAuctionTradeER] code: {}, price: {}, qty: {}, cum_qty: {}, left_qty: {}, order_status: {}, cl_ord_no: {}, order_id: {}, cl_ord_id: {}",
+		cash_auction_trade_er.security_id, cash_auction_trade_er.price, cash_auction_trade_er.order_qty, cash_auction_trade_er.cum_qty, cash_auction_trade_er.leaves_qty, cash_auction_trade_er.ord_status,
+		cash_auction_trade_er.cl_ord_no, cash_auction_trade_er.order_id, cash_auction_trade_er.cl_ord_id);
 
 	WTSTradeInfo *tRecord = makeTradeRecord(&cash_auction_trade_er);
 	if (tRecord)
@@ -779,52 +715,23 @@ void TraderATP::OnRspCashAuctionTradeER(const ATPRspCashAuctionTradeERMsg& cash_
 				_sink->onPushTrade(tRecord);
 
 			tRecord->release();
-
-			//if (_sink)
-			//	_sink->onPushTrade(tRecord);
-
-			//tRecord->release();
 		});
 	}
 
-	// ±£´æ»Ø±¨·ÖÇøºÅ¡¢ĞòºÅ£¬ÓÃÓÚ¶ÏÏßÖØÁ¬Ê±Ö¸¶¨ÒÑÊÕµ½×îĞÂ»Ø±¨ĞòºÅ
+	// ä¿å­˜å›æŠ¥åˆ†åŒºå·ã€åºå·ï¼Œç”¨äºæ–­çº¿é‡è¿æ—¶æŒ‡å®šå·²æ”¶åˆ°æœ€æ–°å›æŠ¥åºå·
 	report_sync[cash_auction_trade_er.partition] = cash_auction_trade_er.index;
 }
 
-// ¶©µ¥ÏÂ´ïÄÚ²¿¾Ü¾ø
+// è®¢å•ä¸‹è¾¾å†…éƒ¨æ‹’ç»
 void TraderATP::OnRspBizRejection(const ATPRspBizRejectionOtherMsg& biz_rejection)
 {
-	std::cout << "biz_rejection : " << std::endl;
-	std::cout << " transact_time : " << biz_rejection.transact_time <<
-		" client_seq_id : " << biz_rejection.client_seq_id <<
-		" msg_type : " << biz_rejection.api_msg_type <<
-		" reject_reason_code : " << biz_rejection.reject_reason_code <<
-		" business_reject_text : " << biz_rejection.business_reject_text <<
-		" user_info : " << biz_rejection.user_info << std::endl;
-
 	if (_sink)
-		write_log(_sink, LL_ERROR, biz_rejection.business_reject_text);
+		write_log(_sink, LL_ERROR, "[OnRspBizRejection] cliend_seq_id: {}, reject_code: {}, reject_msg: {}", biz_rejection.client_seq_id, biz_rejection.reject_reason_code, biz_rejection.business_reject_text);
 }
 
 void TraderATP::OnRspFundQueryResult(const ATPRspFundQueryResultMsg &msg)
 {
-	std::cout << "fund_query_result : " << std::endl;
-	std::cout << "cust_id : " << msg.cust_id <<
-		" fund_account_id : " << msg.fund_account_id <<
-		" account_id : " << msg.account_id <<
-		" client_seq_id : " << msg.client_seq_id <<
-		" query_result_code : " << msg.query_result_code <<
-		" user_info : " << msg.user_info <<
-		" leaves_value : " << msg.leaves_value <<
-		" init_leaves_value : " << msg.init_leaves_value <<
-		" available_t0 : " << msg.available_t0 <<
-		" available_t1 : " << msg.available_t1 <<
-		" available_t2 : " << msg.available_t2 <<
-		" available_t3 : " << msg.available_t3 <<
-		" available_tall : " << msg.available_tall <<
-		" frozen_all : " << msg.frozen_all <<
-		" te_partition_no : " << (int32_t)msg.te_partition_no <<
-		" credit_sell_frozen : " << msg.credit_sell_frozen << std::endl;
+	write_log(_sink, LL_INFO, "[OnRspFundQueryResult][{}] OnRspFundQueryResult.", msg.account_id);
 
 	WTSArray* ayFunds = WTSArray::create();
 	WTSAccountInfo* fundInfo = WTSAccountInfo::create();
@@ -841,123 +748,98 @@ void TraderATP::OnRspFundQueryResult(const ATPRspFundQueryResultMsg &msg)
 
 void TraderATP::OnRspOrderQueryResult(const ATPRspOrderQueryResultMsg &msg)
 {
-	WTSArray* ayOrders = WTSArray::create();
+	write_log(_sink, LL_INFO, "[OnRspOrderQueryResult][{}] last index: {}, total nums: {}", msg.account_id, msg.last_index, msg.total_num);
 
-	int i = 1;
+	_return_nums = msg.total_num;
+
+	if (ayOrders == NULL)
+		ayOrders = WTSArray::create();
+
 	for (const auto& unit : msg.order_array)
 	{
-		std::cout << " order_array_" << i << " : " << std::endl;
-		std::cout << " order_array_" << i << " : " << std::endl;
-		std::cout << " business_type : " << (int32_t)unit.business_type <<
-			" security_id : " << unit.security_id <<
-			" security_symbol : " << unit.security_symbol <<
-			" market_id : " << unit.market_id <<
-			" account_id : " << unit.account_id <<
-			" side : " << unit.side <<
-			" ord_type : " << unit.ord_type <<
-			" ord_status : " << (int32_t)unit.ord_status <<
-			" transact_time : " << unit.transact_time <<
-			" order_price : " << unit.order_price <<
-			" exec_price : " << unit.exec_price <<
-			" order_qty : " << unit.order_qty <<
-			" leaves_qty : " << unit.leaves_qty <<
-			" cum_qty : " << unit.cum_qty <<
-			" cl_ord_no : " << unit.cl_ord_no <<
-			" order_id : " << unit.order_id <<
-			" cl_ord_id : " << unit.cl_ord_id <<
-			" client_seq_id : " << unit.client_seq_id <<
-			" orig_cl_ord_no : " << unit.orig_cl_ord_no <<
-			" frozen_trade_value : " << unit.frozen_trade_value <<
-			" frozen_fee : " << unit.frozen_fee <<
-			" reject_reason_code : " << unit.reject_reason_code <<
-			" ord_rej_reason : " << unit.ord_rej_reason << std::endl;
-		i++;
-
 		WTSOrderInfo* ordInfo = makeOrderInfo(&unit);
 		if (ordInfo == NULL)
 			continue;
 
-		ayOrders->append(ordInfo, false);
+		_asyncio.post([this, ordInfo] {
+			ayOrders->append(ordInfo, false);
+		});
 	}
 
-	if (_sink)
-		_sink->onRspOrders(ayOrders);
+	if ((msg.last_index + 1) == msg.total_num)  // æŸ¥è¯¢å®Œæ¯•
+	{
+		_asyncio.post([this] {
+			if (_sink)
+				_sink->onRspOrders(ayOrders);
 
-	ayOrders->release();
+			ayOrders->clear();
+		});
+	}
 }
 
 void TraderATP::OnRspTradeOrderQueryResult(const ATPRspTradeOrderQueryResultMsg &msg)
 {
-	WTSArray* ayTrades = WTSArray::create();
+	_return_nums = msg.total_num;
 
-	int i = 1;
+	if (ayTrades == NULL)
+		ayTrades = WTSArray::create();
+
+	//write_log(_sink, LL_INFO, "[TraderATP][{}] OnRspTradeOrderQueryResult, last index: {}, total nums: {}", msg.account_id, msg.last_index, msg.total_num);
+
 	for (const auto& unit : msg.order_array)
 	{
-		std::cout << " order_array_" << i << " : " << std::endl;
-		std::cout << " business_type : " << (int32_t)unit.business_type <<
-			" security_id : " << unit.security_id <<
-			" security_symbol : " << unit.security_symbol <<
-			" market_id : " << unit.market_id <<
-			" account_id : " << unit.account_id <<
-			" side : " << unit.side <<
-			" ord_type : " << unit.ord_type <<
-			" transact_time : " << unit.transact_time <<
-			" order_qty : " << unit.order_qty <<
-			" cl_ord_no : " << unit.cl_ord_no <<
-			" order_id : " << unit.order_id <<
-			" cl_ord_id : " << unit.cl_ord_id <<
-			" client_seq_id : " << unit.client_seq_id << std::endl;
-		i++;
-
 		WTSTradeInfo* trdInfo = makeTradeInfo(&unit);
 		if (trdInfo == NULL)
 			continue;
 
-		ayTrades->append(trdInfo, false);
+		_asyncio.post([this, trdInfo] {
+			ayTrades->append(trdInfo, false);
+		});
 	}
 
-	if (_sink)
-		_sink->onRspTrades(ayTrades);
+	//if ((msg.last_index + 1) == msg.total_num)  // æŸ¥è¯¢å®Œæ¯•
+	//{
+	//	if (!_sz_acctid.empty() && (strcmp(msg.account_id, _sz_acctid.c_str()) == 0))
+	//	{
+	//		// æ­¤æ—¶è¿”å›äº†æ‰€æœ‰ç»“æœ
+	//		if (_sink)
+	//			_sink->onRspTrades(ayTrades);
 
-	ayTrades->release();
+	//		ayTrades->clear();
+	//	}
+	//	else if (_sz_acctid.empty())
+	//	{
+	//		// æ­¤æ—¶è¿”å›äº†æ‰€æœ‰ç»“æœ
+	//		if (_sink)
+	//			_sink->onRspTrades(ayTrades);
+
+	//		ayTrades->clear();
+	//	}
+	//}
+
+	if ((msg.last_index + 1) == msg.total_num)  // æŸ¥è¯¢å®Œæ¯•
+	{
+		_asyncio.post([this] {
+			if (_sink)
+				_sink->onRspTrades(ayTrades);
+
+			ayTrades->clear();
+		});
+	}
 }
 
 void TraderATP::OnRspShareQueryResult(const ATPRspShareQueryResultMsg &msg)
 {
-	std::cout << "share_query_result : " << std::endl;
-	std::cout << "cust_id : " << msg.cust_id <<
-		" fund_account_id : " << msg.fund_account_id <<
-		" account_id : " << msg.account_id <<
-		" client_seq_id : " << msg.client_seq_id <<
-		" query_result_code : " << msg.query_result_code <<
-		" user_info : " << msg.user_info <<
-		" last_index : " << msg.last_index <<
-		" total_num : " << msg.total_num << std::endl;
+	_return_nums = msg.total_num;
 
-	//std::vector<APIShareUnit>::iterator it;
+	if (ayTrades == NULL)
+		ayTrades = WTSArray::create();
+
 	if (NULL == _positions)
 		_positions = PositionMap::create();
-	int i = 1;
 
 	for (auto &unit : msg.order_array) {
-		std::cout << " order_array_" << i << " : " << std::endl;
-		std::cout << " security_id : " << unit.security_id <<
-			" security_symbol : " << unit.security_symbol <<
-			" market_id : " << unit.market_id <<
-			" account_id : " << unit.account_id <<
-			" init_qty : " << unit.init_qty <<
-			" leaves_qty : " << unit.leaves_qty <<
-			" available_qty : " << unit.available_qty <<
-			" profit_loss : " << unit.profit_loss <<
-			" market_value : " << unit.market_value <<
-			" cost_price : " << unit.cost_price << std::endl;
-		i++;
-
-		std::string exchg;
-		if (unit.market_id == ATPMarketIDConst::kShangHai)
-			exchg = "SSE";
-		else
-			exchg = "SZSE";
+		const std::string exchg = (unit.market_id == ATPMarketIDConst::kShangHai) ? "SSE" : "SZSE";
 
 		WTSContractInfo* contract = _bd_mgr->getContract(unit.security_id, exchg.c_str());
 		if (contract)
@@ -973,8 +855,13 @@ void TraderATP::OnRspShareQueryResult(const ATPRspShareQueryResultMsg &msg)
 			}
 			//pos->setDirection(wrapPosDirection(position->position_direction));
 
-			pos->setNewPosition((double)(unit.available_qty / 100.0));
-			pos->setPrePosition((double)unit.init_qty / 100.0);
+			double tmp = (double)(unit.leaves_qty / 100.0 - unit.init_qty / 100.0);
+
+			pos->setNewPosition((tmp >= 0) ? tmp : 0);  // å‰©ä½™è‚¡ä»½æ•°é‡N15(2)ï¼ŒåŒ…å«å½“æ—¥ä¹°å…¥éƒ¨åˆ†ï¼Œæ‹†åˆ†åˆå¹¶ï¼Œç”³è´­èµå›
+			pos->setPrePosition((double)unit.init_qty / 100.0);  // æ—¥åˆæŒä»“é‡N15(2)
+
+			pos->setAvailNewPos(0);
+			pos->setAvailPrePos(unit.available_qty / 100.0);   // å¯ç”¨è‚¡ä»½æ•°é‡N15(2)
 
 			pos->setMargin(unit.market_value / 10000.0);
 			pos->setDynProfit(unit.profit_loss / 10000.0);
@@ -982,75 +869,86 @@ void TraderATP::OnRspShareQueryResult(const ATPRspShareQueryResultMsg &msg)
 
 			pos->setAvgPrice(unit.cost_price / 100.0);
 
-			pos->setAvailNewPos(0);
-			pos->setAvailPrePos((double)unit.init_qty / 100.0);
+			write_log(_sink, LL_INFO, "[OnRspShareQueryResult][{}] {}.{}, {}[{}]", msg.account_id, exchg, pos->getCode(), pos->getNewPosition(), pos->getPrePosition());
 		}
 	}
 
-	WTSArray* ayPos = WTSArray::create();
-
-	if (_positions && _positions->size() > 0)
+	if ((msg.last_index + 1) == msg.total_num)  // æŸ¥è¯¢å®Œæ¯•
 	{
-		for (auto it = _positions->begin(); it != _positions->end(); it++)
-		{
-			ayPos->append(it->second, true);
-		}
+		_asyncio.post([this] {
+			WTSArray* ayPos = WTSArray::create();
+
+			if (_positions && _positions->size() > 0)
+			{
+				for (auto it = _positions->begin(); it != _positions->end(); it++)
+				{
+					ayPos->append(it->second, true);
+				}
+			}
+
+			if (_sink)
+				_sink->onRspPosition(ayPos);
+
+			if (_positions)
+			{
+				_positions->release();
+				_positions = NULL;
+			}
+
+			ayPos->release();
+		});
 	}
-
-	if (_sink)
-		_sink->onRspPosition(ayPos);
-
-	if (_positions)
-	{
-		_positions->release();
-		_positions = NULL;
-	}
-
-	ayPos->release();
 }
 
 #pragma region "ITraderApi"
 bool TraderATP::init(WTSVariant *params)
 {
-	write_log(_sink, LL_INFO, "Initalizing TraderATP ...");
-
 	_user = params->getCString("user");
 	_pass = params->getCString("pass");
-	_accountid = params->getCString("account_id");
+	_loginmode = params->getInt32("login_mode");
+	_sh_acctid = params->getCString("sh_acct_id");
+	_sz_acctid = params->getCString("sz_acct_id");
+	_acctid = params->getCString("acct_id");
+	_is_sh = params->getBoolean("is_sh");
 	_accpasswd = params->getCString("account_key");
 	_fund_accountid = params->getCString("fund_account_id");
 	_cust_id = params->getCString("cust_id");
 	_branchid = params->getCString("branch_id");
+	_node_id = params->getCString("node_id");
+	_order_way = params->getInt32("order_way");
 
 	_front = params->getCString("front");
 	_front2 = params->getCString("front_backup");
 
-	write_log(_sink, LL_INFO, "user: {} | password: {} | account_id: {} | account_password: {} | ip_host: {}", _user, _pass, _accountid, _accpasswd, _front);
+	WTSArray* ayPos = WTSArray::create();
 
 	std::string module = params->getCString("atpmodule");
+	std::string dllpath;
+
 	if (module.empty()) module = "atptradeapi";
-	std::string dllpath = getBinDir() + DLLHelper::wrap_module(module.c_str(), "lib");;
+	dllpath = getBinDir() + DLLHelper::wrap_module(module.c_str(), "lib");
+
 	m_hInstATP = DLLHelper::load_library(dllpath.c_str());
 
 	static bool inited = false;
 	if (!inited)
 	{
-		// ³õÊ¼»¯API
-		const std::string station_name = ""; // Õ¾µãĞÅÏ¢£¬¸Ã×Ö¶ÎÒÑ¾­²»Ê¹ÓÃ
-		const std::string cfg_path = ".";      // ÅäÖÃÎÄ¼şÂ·¾¶
-		const std::string log_dir_path = ""; // ÈÕÖ¾Â·¾¶
-		bool record_all_flag = true;         // ÊÇ·ñ¼ÇÂ¼ËùÓĞÎ¯ÍĞĞÅÏ¢
-		std::unordered_map<std::string, std::string> encrypt_cfg; // ¼ÓÃÜ¿âÅäÖÃ
-		bool connection_retention_flag = false;   // ÊÇ·ñÆôÓÃ»á»°±£³Ö
+		// åˆå§‹åŒ–API
+		const std::string station_name = ""; // ç«™ç‚¹ä¿¡æ¯ï¼Œè¯¥å­—æ®µå·²ç»ä¸ä½¿ç”¨
+		const std::string cfg_path = ".";      // é…ç½®æ–‡ä»¶è·¯å¾„
+		const std::string log_dir_path = ""; // æ—¥å¿—è·¯å¾„
+		bool record_all_flag = true;         // æ˜¯å¦è®°å½•æ‰€æœ‰å§”æ‰˜ä¿¡æ¯
+		//std::tr1::unordered_map<std::string, std::string> encrypt_cfg;  // åŠ å¯†åº“é…ç½®
+		//bool connection_retention_flag = false;   // æ˜¯å¦å¯ç”¨ä¼šè¯ä¿æŒ
 
-		// encrypt_cfg²ÎÊıÌîĞ´£º
-		encrypt_cfg["ENCRYPT_SCHEMA"] = "0";              // ×Ö·û 0 ±íÊ¾ ²»¶ÔÏûÏ¢ÖĞµÄËùÓĞ password ¼ÓÃÜ
-		encrypt_cfg["ATP_ENCRYPT_PASSWORD"] = "";         // ³ıµÇÈë¼°ÃÜÂëĞŞ¸ÄÍâÆäËûÏûÏ¢µÄÃÜÂë×Ö¶Î¼ÓÃÜËã·¨
-		encrypt_cfg["ATP_LOGIN_ENCRYPT_PASSWORD"] = "";   // µÇÈë¼°ÃÜÂëĞŞ¸ÄÏûÏ¢ÖĞÃÜÂë×Ö¶ÎµÄ¼ÓÃÜËã·¨soÂ·¾¶
-		encrypt_cfg["GM_SM2_PUBLIC_KEY_PATH"] = "";       // ²ÉÓÃ¹úÃÜËã·¨Ê±£¬Í¨¹ı¸ÃkeyÅäÖÃ GMËã·¨ÅäÖÃ¼ÓÃÜÊ¹ÓÃµÄ¹«Ô¿Â·¾¶
-		encrypt_cfg["RSA_PUBLIC_KEY_PATH"] = "";          // Èç¹ûÊ¹ÓÃrsaËã·¨¼ÓÃÜ£¬Í¨¹ı¸ÃkeyÅäÖÃ rsaËã·¨ÅäÖÃ¼ÓÃÜÊ¹ÓÃµÄ¹«Ô¿Â·¾¶
+		//// encrypt_cfgå‚æ•°å¡«å†™ï¼š
+		//encrypt_cfg["ENCRYPT_SCHEMA"] = "0";              // å­—ç¬¦ 0 è¡¨ç¤º ä¸å¯¹æ¶ˆæ¯ä¸­çš„æ‰€æœ‰ password åŠ å¯†
+		//encrypt_cfg["ATP_ENCRYPT_PASSWORD"] = "";         // é™¤ç™»å…¥åŠå¯†ç ä¿®æ”¹å¤–å…¶ä»–æ¶ˆæ¯çš„å¯†ç å­—æ®µåŠ å¯†ç®—æ³•
+		//encrypt_cfg["ATP_LOGIN_ENCRYPT_PASSWORD"] = "";   // ç™»å…¥åŠå¯†ç ä¿®æ”¹æ¶ˆæ¯ä¸­å¯†ç å­—æ®µçš„åŠ å¯†ç®—æ³•soè·¯å¾„
+		//encrypt_cfg["GM_SM2_PUBLIC_KEY_PATH"] = "";       // é‡‡ç”¨å›½å¯†ç®—æ³•æ—¶ï¼Œé€šè¿‡è¯¥keyé…ç½® GMç®—æ³•é…ç½®åŠ å¯†ä½¿ç”¨çš„å…¬é’¥è·¯å¾„
+		//encrypt_cfg["RSA_PUBLIC_KEY_PATH"] = "";          // å¦‚æœä½¿ç”¨rsaç®—æ³•åŠ å¯†ï¼Œé€šè¿‡è¯¥keyé…ç½® rsaç®—æ³•é…ç½®åŠ å¯†ä½¿ç”¨çš„å…¬é’¥è·¯å¾„
 
-		ATPRetCodeType ec = ATPTradeAPI::Init(station_name, cfg_path, log_dir_path, record_all_flag, encrypt_cfg, connection_retention_flag);
+		ATPRetCodeType ec = ATPTradeAPI::Init(station_name, cfg_path, log_dir_path, record_all_flag);
 
 		if (ec != ErrorCode::kSuccess)
 		{
@@ -1115,18 +1013,17 @@ void TraderATP::reconnect()
 	locations.push_back(_front);
 	locations.push_back(_front2);
 
-	// ÉèÖÃÁ¬½ÓĞÅÏ¢
+	// è®¾ç½®è¿æ¥ä¿¡æ¯
 	ATPConnectProperty prop;
-	prop.user = _user;												// Íø¹ØÓÃ»§Ãû
-	prop.password = _pass;											// Íø¹ØÓÃ»§ÃÜÂë
-	prop.locations = locations;										// Íø¹ØÖ÷±¸½ÚµãµÄµØÖ·+¶Ë¿Ú
-	prop.heartbeat_interval_milli = 5000;                           // ·¢ËÍĞÄÌøµÄÊ±¼ä¼ä¸ô£¬µ¥Î»£ººÁÃë
-	prop.connect_timeout_milli = 5000;                              // Á¬½Ó³¬Ê±Ê±¼ä£¬µ¥Î»£ººÁÃë
-	prop.reconnect_time = 10;                                       // ÖØÊÔÁ¬½Ó´ÎÊı
-	prop.client_name = "WonderTrader";                              // ¿Í»§¶Ë³ÌĞòÃû×Ö
-	prop.client_version = "V1.0.0";									// ¿Í»§¶Ë³ÌĞò°æ±¾
-	prop.report_sync = report_sync;									// »Ø±¨Í¬²½Êı¾İ·ÖÇøºÅ+ĞòºÅ£¬Ê×´ÎÊÇ¿Õ£¬¶ÏÏßÖØÁ¬Ê±ÌîÈëµÄÊÇ½ÓÊÜµ½µÄ×îĞÂ·ÖÇøºÅ+ĞòºÅ
-	prop.mode = 0;													// Ä£Ê½0-Í¬²½»Ø±¨Ä£Ê½£¬Ä£Ê½1-¿ìËÙµÇÂ¼Ä£Ê½£¬²»Í¬²½»Ø±¨
+	prop.user = _user;												// ç½‘å…³ç”¨æˆ·å
+	prop.password = _pass;											// ç½‘å…³ç”¨æˆ·å¯†ç 
+	prop.locations = locations;										// ç½‘å…³ä¸»å¤‡èŠ‚ç‚¹çš„åœ°å€+ç«¯å£
+	prop.heartbeat_interval_milli = 5000;                           // å‘é€å¿ƒè·³çš„æ—¶é—´é—´éš”ï¼Œå•ä½ï¼šæ¯«ç§’
+	prop.connect_timeout_milli = 5000;                              // è¿æ¥è¶…æ—¶æ—¶é—´ï¼Œå•ä½ï¼šæ¯«ç§’
+	prop.reconnect_time = 10;                                       // é‡è¯•è¿æ¥æ¬¡æ•°
+	prop.client_name = _product;									// å®¢æˆ·ç«¯ç¨‹åºåå­—
+	prop.report_sync = report_sync;									// å›æŠ¥åŒæ­¥æ•°æ®åˆ†åŒºå·+åºå·ï¼Œé¦–æ¬¡æ˜¯ç©ºï¼Œæ–­çº¿é‡è¿æ—¶å¡«å…¥çš„æ˜¯æ¥å—åˆ°çš„æœ€æ–°åˆ†åŒºå·+åºå·
+	prop.mode = 0;													// æ¨¡å¼0-åŒæ­¥å›æŠ¥æ¨¡å¼ï¼Œæ¨¡å¼1-å¿«é€Ÿç™»å½•æ¨¡å¼ï¼Œä¸åŒæ­¥å›æŠ¥
 
 	ATPRetCodeType ec = _api->Connect(prop, this);
 	if (ec != ErrorCode::kSuccess)
@@ -1137,13 +1034,11 @@ void TraderATP::reconnect()
 
 void TraderATP::connect()
 {
-	write_log(_sink, LL_INFO, "Connecting to server, user_info: {}, password: {}, account_id: {}", _user, _pass, _accountid);
-
 	reconnect();
 
 	if (_thrd_worker == NULL)
 	{
-		boost::asio::io_service::work work(_asyncio);
+		static boost::asio::io_service::work work(_asyncio);
 		_thrd_worker.reset(new StdThread([this]() {
 			while (true)
 			{
@@ -1167,7 +1062,7 @@ bool TraderATP::isConnected()
 
 void TraderATP::genEntrustID(char* buffer, uint32_t orderRef)
 {
-	//ÕâÀï²»ÔÙÊ¹ÓÃsessionid£¬ÒòÎªÃ¿´ÎµÇÂ½»á²»Í¬£¬Èç¹ûÊ¹ÓÃµÄ»°£¬¿ÉÄÜ»áÔì³É²»Î¨Ò»µÄÇé¿ö
+	//è¿™é‡Œä¸å†ä½¿ç”¨sessionidï¼Œå› ä¸ºæ¯æ¬¡ç™»é™†ä¼šä¸åŒï¼Œå¦‚æœä½¿ç”¨çš„è¯ï¼Œå¯èƒ½ä¼šé€ æˆä¸å”¯ä¸€çš„æƒ…å†µ
 	fmtutil::format_to(buffer, "{}#{}#{}", _user, _tradingday, orderRef);
 }
 
@@ -1203,20 +1098,19 @@ bool TraderATP::makeEntrustID(char* buffer, int length)
 
 void TraderATP::doLogin(const char* productInfo)
 {
-	write_log(_sink, LL_INFO, "Now logging in ...");
-
 	_state = TS_LOGINING;
 
-	// ÉèÖÃµÇÈëÏûÏ¢
+	// è®¾ç½®ç™»å…¥æ¶ˆæ¯
 	ATPReqCustLoginOtherMsg login_msg;
-	wt_strcpy(login_msg.fund_account_id, _fund_accountid.c_str());           // ×Ê½ğÕË»§ID
-	wt_strcpy(login_msg.password, _accpasswd.c_str());                  // ¿Í»§ºÅÃÜÂë
+
+	wt_strcpy(login_msg.fund_account_id, _fund_accountid.c_str());           // èµ„é‡‘è´¦æˆ·ID
+	wt_strcpy(login_msg.password, _accpasswd.c_str());                  // å®¢æˆ·å·å¯†ç 
 	strncpy(login_msg.user_info, _user.c_str(), 17);
-	strncpy(login_msg.account_id, _accountid.c_str(), 17);
-	login_msg.login_mode = ATPCustLoginModeType::kFundAccountIDMode;	// µÇÂ¼Ä£Ê½£¬×Ê½ğÕËºÅµÇÂ¼
-	login_msg.client_seq_id = genRequestID();							// ¿Í»§ÏµÍ³ÏûÏ¢ºÅ
-	login_msg.order_way = '0';											// Î¯ÍĞ·½Ê½£¬×ÔÖúÎ¯ÍĞ
-	login_msg.client_feature_code = productInfo;						// ÖÕ¶ËÊ¶±ğÂë
+	login_msg.login_mode = _loginmode;  //  wrapLoginMode(_loginmode);  // ATPCustLoginModeType::kFundAccountIDMode;	// ç™»å½•æ¨¡å¼ï¼Œèµ„é‡‘è´¦å·ç™»å½•
+	login_msg.client_seq_id = genRequestID();							// å®¢æˆ·ç³»ç»Ÿæ¶ˆæ¯å·
+	login_msg.order_way = std::to_string(_order_way).at(0); //'0';											// å§”æ‰˜æ–¹å¼ï¼Œè‡ªåŠ©å§”æ‰˜
+	login_msg.client_feature_code = _node_id;						// ç»ˆç«¯è¯†åˆ«ç 
+
 	strncpy(login_msg.branch_id, _branchid.c_str(), 11);
 
 	ATPRetCodeType ec = _api->ReqCustLoginOther(&login_msg);
@@ -1248,9 +1142,11 @@ int TraderATP::logout()
 		return -1;
 
 	ATPReqCustLogoutOtherMsg logout_msg;
-	wt_strcpy(logout_msg.fund_account_id, _accountid.c_str());	// ×Ê½ğÕË»§ID
-	logout_msg.client_seq_id = genRequestID();              // ¿Í»§ÏµÍ³ÏûÏ¢ºÅ
-	logout_msg.client_feature_code = _product;				// ÖÕ¶ËÊ¶±ğÂë
+	wt_strcpy(logout_msg.fund_account_id, _fund_accountid.c_str());	// èµ„é‡‘è´¦æˆ·ID
+	logout_msg.client_seq_id = genRequestID();              // å®¢æˆ·ç³»ç»Ÿæ¶ˆæ¯å·
+	//logout_msg.client_feature_code = _product;				// ç»ˆç«¯è¯†åˆ«ç 
+
+	logout_msg.client_feature_code = _node_id;				// ç»ˆç«¯è¯†åˆ«ç 
 
 	ATPRetCodeType ec = _api->ReqCustLogoutOther(&logout_msg);
 	if (ec != ErrorCode::kSuccess)
@@ -1268,83 +1164,56 @@ int TraderATP::orderInsert(WTSEntrust* entrust)
 		return -1;
 	}
 
-	//XTPOrderInsertInfo req;
-	//memset(&req, 0, sizeof(req));
-	//
-	//uint32_t orderref;
-	//extractEntrustID(entrust->getEntrustID(), orderref);
-	//req.order_client_id = orderref;
-	//strcpy(req.ticker, entrust->getCode());
-	//req.market = wt_stricmp(entrust->getExchg(), "SSE") == 0 ? XTP_MKT_SH_A : XTP_MKT_SZ_A;
-	//req.price = entrust->getPrice();
-	//req.quantity = (int64_t)entrust->getVolume();
-	//req.price_type = XTP_PRICE_LIMIT;
-	//req.side = wrapDirectionType(entrust->getDirection(), entrust->getOffsetType());
-	//req.business_type = XTP_BUSINESS_TYPE_CASH;
-	//req.position_effect = wrapOffsetType(entrust->getOffsetType());
-
-	//if (strlen(entrust->getUserTag()) > 0)
-	//{
-	//	m_eidCache.put(entrust->getEntrustID(), entrust->getUserTag(), 0, [this](const char* message) {
-	//		write_log(_sink, LL_WARN, message);
-	//	});
-	//}
-
-	//uint64_t iResult = _api->InsertOrder(&req, _sessionid);
-	//if (iResult == 0)
-	//{
-	//	auto error_info = _api->GetApiLastError();
-	//	write_log(_sink,LL_ERROR, "[TraderATP] Order inserting failed: {}", error_info->error_msg);
-	//}
-
-
-	// ÉÏº£ÊĞ³¡¹ÉÆ±ÏŞ¼ÛÎ¯ÍĞ
+	// æ²ªæ·±å¸‚åœºè‚¡ç¥¨é™ä»·å§”æ‰˜
 	thread_local static ATPReqCashAuctionOrderMsg p;
+	//ATPReqCashAuctionOrderMsg p;
+	//memset(&p, 0, sizeof(p));
 
 	uint32_t orderref;
 	extractEntrustID(entrust->getEntrustID(), orderref);
 
-	wt_strcpy(p.security_id, entrust->getCode());                   // Ö¤È¯´úÂë
-	p.market_id = strcmp(entrust->getExchg(), "SSE") == 0 ? ATPMarketIDConst::kShangHai : ATPMarketIDConst::kShenZhen;             // ÊĞ³¡ID£¬ÉÏº£
-	wt_strcpy(p.cust_id, _cust_id.c_str());                 // ¿Í»§ºÅID
-	wt_strcpy(p.fund_account_id, _fund_accountid.c_str());       // ×Ê½ğÕË»§ID
-	wt_strcpy(p.account_id, _accountid.c_str());                 // ÕË»§ID
-	//p.side = (entrust->getOffsetType() == WOT_OPEN) ? ATPSideConst::kBuy : ATPSideConst::kSell;     // ÂòÂô·½Ïò£¬Âò
-	p.side = (entrust->getDirection() == WOT_OPEN) ? ATPSideConst::kBuy : ATPSideConst::kSell;      // ÂòÂô·½Ïò£¬Âò
-	//p.order_type = ATPOrdTypeConst::kFixedNew;				// ¶©µ¥ÀàĞÍ£¬ÏŞ¼Û
+	//bool isSh = (strcmp(entrust->getExchg(), "SSE") == 0) ? true : false;
+
+	wt_strcpy(p.security_id, entrust->getCode());                   // è¯åˆ¸ä»£ç 
+	p.market_id = _is_sh ? ATPMarketIDConst::kShangHai : ATPMarketIDConst::kShenZhen;             // å¸‚åœºIDï¼Œä¸Šæµ·
+	wt_strcpy(p.cust_id, _cust_id.c_str());                 // å®¢æˆ·å·ID
+	wt_strcpy(p.fund_account_id, _fund_accountid.c_str());       // èµ„é‡‘è´¦æˆ·ID
+
+	wt_strcpy(p.account_id, _acctid.c_str());                 // è´¦æˆ·ID
+
+	//p.side = (entrust->getDirection() == WOT_OPEN) ? ATPSideConst::kBuy : ATPSideConst::kSell;      // ä¹°å–æ–¹å‘ï¼Œä¹°
+	p.side = wrapDirectionType(entrust->getDirection(), entrust->getOffsetType());
+	//p.order_type = ATPOrdTypeConst::kFixedNew;				// è®¢å•ç±»å‹ï¼Œé™ä»·
 	p.order_type = wrapOrdType(entrust->getPriceType(), entrust->getOrderFlag());
-	p.price = (int32_t)(entrust->getPrice() * 10000);         // Î¯ÍĞ¼Û¸ñ N13(4)£¬21.0000Ôª
-	p.order_qty = (int32_t)(entrust->getVolume() * 100);            // Éê±¨ÊıÁ¿N15(2)£»¹ÉÆ±Îª¹É¡¢»ù½ğÎª·İ¡¢ÉÏº£Õ®È¯Ä¬ÈÏÎªÕÅ£¨Ê¹ÓÃÊ±ÇëÎñ±ØÓëÈ¯ÉÌÈ·ÈÏ£©£¬ÆäËûÎªÕÅ£»1000.00¹É
-	p.client_seq_id = genRequestID();						// ÓÃ»§ÏµÍ³ÏûÏ¢ĞòºÅ
-	p.order_way = '0';										// Î¯ÍĞ·½Ê½£¬×ÔÖúÎ¯ÍĞ
-	p.client_feature_code = _product;						// ÖÕ¶ËÊ¶±ğÂë
-	strncpy(p.password, _pass.c_str(), 129);							// ¿Í»§ÃÜÂë
+	p.price = (int32_t)(entrust->getPrice() * 10000);         // å§”æ‰˜ä»·æ ¼ N13(4)ï¼Œ21.0000å…ƒ
+	p.order_qty = (int32_t)(entrust->getVolume() * 100);            // ç”³æŠ¥æ•°é‡N15(2)ï¼›è‚¡ç¥¨ä¸ºè‚¡ã€åŸºé‡‘ä¸ºä»½ã€ä¸Šæµ·å€ºåˆ¸é»˜è®¤ä¸ºå¼ ï¼ˆä½¿ç”¨æ—¶è¯·åŠ¡å¿…ä¸åˆ¸å•†ç¡®è®¤ï¼‰ï¼Œå…¶ä»–ä¸ºå¼ ï¼›1000.00è‚¡
+	p.client_seq_id = genRequestID();						// ç”¨æˆ·ç³»ç»Ÿæ¶ˆæ¯åºå·
+	p.order_way = std::to_string(_order_way).at(0);  // 0;										// å§”æ‰˜æ–¹å¼ï¼Œè‡ªåŠ©å§”æ‰˜
+	p.client_feature_code = _node_id;  // ç»ˆç«¯è¯†åˆ«ç 
+	strncpy(p.password, _pass.c_str(), 129);							// å®¢æˆ·å¯†ç 
 	fmt::format_to(p.user_info, "{}", orderref);
 
-	std::cout << "order info: " << std::endl;
-	std::cout << "security id: " << p.security_id << std::endl;
-	std::cout << "market id: " << p.market_id << std::endl;
-	std::cout << "cust id: " << p.cust_id << std::endl;
-	std::cout << "account id: " << p.account_id << std::endl;
-	std::cout << "order_type: " << p.order_type << std::endl;
-	std::cout << "side id: " << p.side << std::endl;
-	std::cout << "order price: " << p.price << std::endl;
-	std::cout << "order quantity: " << p.order_qty << std::endl;
-
-	if (strlen(entrust->getUserTag()) > 0)
+	//const int totals = 3000;
+	//for (int i = 0; i < totals; i++)
 	{
-		m_eidCache.put(entrust->getEntrustID(), entrust->getUserTag(), 0, [this](const char* message) {
-			write_log(_sink, LL_WARN, message);
-		});
+		write_log(_sink, LL_INFO, "[orderInsert] code: {}, acct_id: {}, side: {}, price: {}, qty: {}", p.security_id, p.account_id, p.side, p.price, p.order_qty);
+
+		if (strlen(entrust->getUserTag()) > 0)
+		{
+			m_eidCache.put(entrust->getEntrustID(), entrust->getUserTag(), 0, [this](const char* message) {
+				write_log(_sink, LL_WARN, message);
+			});
+		}
+
+
+		ATPRetCodeType ec = _api->ReqCashAuctionOrder(&p);
+		if (ec != ErrorCode::kSuccess)
+		{
+			write_log(_sink, LL_ERROR, "[TraderATP] Order inserting failed: {}", ec);
+		}
 	}
 
-	ATPRetCodeType ec = _api->ReqCashAuctionOrder(&p);
-	if (ec != ErrorCode::kSuccess)
-	{
-		write_log(_sink, LL_ERROR, "[TraderATP] Order inserting failed: {}", ec);
-	}
-
-	return ec;
+	return 0;
 }
 
 int TraderATP::orderAction(WTSEntrustAction* action)
@@ -1355,18 +1224,27 @@ int TraderATP::orderAction(WTSEntrustAction* action)
 	}
 
 	thread_local static ATPReqCancelOrderMsg p;
-	p.market_id = strcmp(action->getExchg(), "SSE") == 0 ? ATPMarketIDConst::kShangHai : ATPMarketIDConst::kShenZhen;
-	wt_strcpy(p.cust_id, _cust_id.c_str());                    // ¿Í»§ºÅID
-	wt_strcpy(p.fund_account_id, _fund_accountid.c_str());          // ×Ê½ğÕË»§ID
-	wt_strcpy(p.user_info, _user.c_str());                   // ÕË»§ID
-	wt_strcpy(p.account_id, _accountid.c_str());  // Ö¤È¯ÕË»§
-	wt_strcpy(p.password, _accpasswd.c_str());  // ½»Ò×ÃÜÂë
+	//ATPReqCancelOrderMsg p;0.0
+	//memset(&p, 0, sizeof(p));
+
+	//bool isSH = strcmp(action->getExchg(), "SSE") == 0;
+
+	p.market_id = (_is_sh) ? ATPMarketIDConst::kShangHai : ATPMarketIDConst::kShenZhen;
+	wt_strcpy(p.cust_id, _cust_id.c_str());                    // å®¢æˆ·å·ID
+	wt_strcpy(p.fund_account_id, _fund_accountid.c_str());          // èµ„é‡‘è´¦æˆ·ID
+	wt_strcpy(p.user_info, _user.c_str());                   // è´¦æˆ·ID
+
+	wt_strcpy(p.account_id, _acctid.c_str());  // è¯åˆ¸è´¦æˆ·
+
+	wt_strcpy(p.password, _accpasswd.c_str());  // äº¤æ˜“å¯†ç 
 	p.client_seq_id = genRequestID();
-	p.order_way = '0';
+	p.order_way = std::to_string(_order_way).at(0);
 	p.orig_cl_ord_no = strtoull(action->getOrderID(), NULL, 10);
 
-	std::cout << "send seq_id of order : " << p.client_seq_id << std::endl;
-	std::cout << "cancel cl_ord_no: " << p.orig_cl_ord_no << std::endl;
+	p.client_feature_code = _node_id;
+
+	//write_log(_sink, LL_ERROR, "[TraderATP][{}]è´¦æˆ·è¶…å‡ºæ’¤å•é˜ˆå€¼ï¼", p.account_id);
+	//return -1;
 
 	ATPRetCodeType ec = _api->ReqCancelOrder(&p);
 	if (ec != ErrorCode::kSuccess)
@@ -1388,95 +1266,173 @@ int TraderATP::queryAccount()
 
 	strncpy(p.cust_id, _cust_id.c_str(), 17);
 	strncpy(p.fund_account_id, _fund_accountid.c_str(), 17);
-	strncpy(p.account_id, _accountid.c_str(), 13);
+	strncpy(p.account_id, _acctid.c_str(), 13);
 	p.client_seq_id = genRequestID();
 	strncpy(p.user_info, _user.c_str(), 17);
 	strncpy(p.password, _pass.c_str(), 129);
 	strncpy(p.currency, "CNY", 5);
-
-	std::cout << "send seq_id of order : " << p.client_seq_id << std::endl;
-	std::cout << "cust_id: " << p.cust_id << " fund_account_id: " << p.fund_account_id
-		<< " account_id: " << p.account_id << " user: " << p.user_info << std::endl;
+	p.client_feature_code = _node_id;
 
 	ATPRetCodeType ec = _api->ReqFundQuery(&p);
 	if (ec != ErrorCode::kSuccess)
 	{
-		write_log(_sink, LL_ERROR, "[TraderATP] Query account failed: {}", ec);
+		write_log(_sink, LL_ERROR, "[TraderATP][{}] Query account failed: {}", _acctid, ec);
 	}
+
 	return 0;
 }
 
 int TraderATP::queryPositions()
 {
-	ATPReqShareQueryMsg p;
-	strncpy(p.cust_id, _cust_id.c_str(), 17);
-	strncpy(p.fund_account_id, _fund_accountid.c_str(), 17);
-	strncpy(p.account_id, _accountid.c_str(), 13);
-	p.client_seq_id = genRequestID();
-	strncpy(p.user_info, _user.c_str(), 17);
-	strncpy(p.password, _pass.c_str(), 129);
+	_asyncio.post([this]() {
+		{
+			ATPReqShareQueryMsg p;
+			strncpy(p.cust_id, _cust_id.c_str(), 17);
+			strncpy(p.fund_account_id, _fund_accountid.c_str(), 17);
+			strncpy(p.account_id, _acctid.c_str(), 13);
+			p.client_seq_id = genRequestID();
+			strncpy(p.user_info, _user.c_str(), 17);
+			strncpy(p.password, _pass.c_str(), 129);
+			p.client_feature_code = _node_id;
+			p.query_index = 0;
 
-	APIAccountIDUnit api_account_unit;
-	strncpy(api_account_unit.account_id, _accountid.c_str(), 13);
-	p.account_id_array.push_back(api_account_unit);
+			APIAccountIDUnit api_account_unit;
+			strncpy(api_account_unit.account_id, _acctid.c_str(), 13);
+			p.account_id_array.push_back(api_account_unit);
 
-	//p->business_type = business_type;
-	//p->market_id = market_id;
-	//strncpy(p->security_id, security_id.c_str(), 9);
-	//p->query_index = query_index;
-	//p->return_num = return_num;
+			ATPRetCodeType ec = _api->ReqShareQuery(&p);
+			if (ec != ErrorCode::kSuccess)
+			{
+				write_log(_sink, LL_ERROR, "[TraderATP][{}] Query positions failed: {}", _acctid, ec);
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-	std::cout << "send seq_id of order : " << p.client_seq_id << std::endl;
+			if (_return_nums > 100)  // æœ€å¤§å•é¡µå®¹é‡ä¸º100æ¡
+			{
+				// éœ€è¦å¤šé¡µæŸ¥è¯¢
+				if (_return_nums % 100 > 0)
+					_return_nums += 100;
 
-	ATPRetCodeType ec = _api->ReqShareQuery(&p);
-	if (ec != ErrorCode::kSuccess)
-	{
-		write_log(_sink, LL_ERROR, "[TraderATP] Query positions failed: {}", ec);
-	}
+				int times = _return_nums / 100;
+
+				for (int i = 0; i < times; i++)
+				{
+					p.query_index = (i + 1) * 100;
+
+					ec = _api->ReqShareQuery(&p);
+					if (ec != ErrorCode::kSuccess)
+					{
+						write_log(_sink, LL_ERROR, "[TraderATP][{}] Query positions failed: {}", _acctid, ec);
+					}
+					std::this_thread::sleep_for(std::chrono::milliseconds(50));
+				}
+			}
+		}
+
+		//std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	});
 
 	return 0;
 }
 
 int TraderATP::queryOrders()
 {
-	ATPReqOrderQueryMsg p;
-	strncpy(p.cust_id, _cust_id.c_str(), 17);
-	strncpy(p.fund_account_id, _fund_accountid.c_str(), 17);
-	strncpy(p.account_id, _accountid.c_str(), 13);
-	p.client_seq_id = genRequestID();
-	p.business_abstract_type = 1;
-	strncpy(p.user_info, _user.c_str(), 17);
-	strncpy(p.password, _pass.c_str(), 129);
+	_asyncio.post([this]() {
+		{
+			ATPReqOrderQueryMsg p;
+			strncpy(p.cust_id, _cust_id.c_str(), 17);
+			strncpy(p.fund_account_id, _fund_accountid.c_str(), 17);
+			strncpy(p.account_id, _acctid.c_str(), 13);
+			p.client_seq_id = genRequestID();
+			p.business_abstract_type = 1;
+			strncpy(p.user_info, _user.c_str(), 17);
+			strncpy(p.password, _pass.c_str(), 129);
+			p.client_feature_code = _node_id;
+			p.query_index = 0;
 
-	std::cout << "send seq_id of order : " << p.client_seq_id << std::endl;
+			ATPRetCodeType ec = _api->ReqOrderQuery(&p);
+			if (ec != ErrorCode::kSuccess)
+			{
+				write_log(_sink, LL_ERROR, "[TraderATP][{}] Query orders failed: {}", _acctid, ec);
+			}
+			write_log(_sink, LL_INFO, "return num: {}", _return_nums);
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			write_log(_sink, LL_INFO, "return num: {}", _return_nums);
 
-	ATPRetCodeType ec = _api->ReqOrderQuery(&p);
-	if (ec != ErrorCode::kSuccess)
-	{
-		write_log(_sink, LL_ERROR, "[TraderATP] Query orders failed: {}", ec);
-	}
+			if (_return_nums > 100)
+			{
+				// éœ€è¦å¤šé¡µæŸ¥è¯¢
+				if (_return_nums % 100 > 0)
+					_return_nums += 100;
+
+				int times = _return_nums / 100;
+
+				for (int i = 0; i < times; i++)
+				{
+					p.query_index = (i + 1) * 100;
+
+					ec = _api->ReqOrderQuery(&p);
+					if (ec != ErrorCode::kSuccess)
+					{
+						write_log(_sink, LL_ERROR, "[TraderATP][{}] Query orders failed: {}", _acctid, ec);
+					}
+					std::this_thread::sleep_for(std::chrono::milliseconds(50));
+				}
+			}
+		}
+	});
 
 	return 0;
 }
 
 int TraderATP::queryTrades()
 {
-	ATPReqTradeOrderQueryMsg p;
-	strncpy(p.cust_id, _cust_id.c_str(), 17);
-	strncpy(p.fund_account_id, _fund_accountid.c_str(), 17);
-	strncpy(p.account_id, _accountid.c_str(), 13);
-	p.client_seq_id = genRequestID();
-	p.business_abstract_type = 1;
-	strncpy(p.user_info, _user.c_str(), 17);
-	strncpy(p.password, _pass.c_str(), 129);
+	_asyncio.post([this]() {
+		{
+			ATPReqTradeOrderQueryMsg p;
+			strncpy(p.cust_id, _cust_id.c_str(), 17);
+			strncpy(p.fund_account_id, _fund_accountid.c_str(), 17);
+			strncpy(p.account_id, _acctid.c_str(), 13);
+			p.client_seq_id = genRequestID();
+			p.business_abstract_type = 1;
+			strncpy(p.user_info, _user.c_str(), 17);
+			strncpy(p.password, _pass.c_str(), 129);
+			p.client_feature_code = _node_id;
+			p.query_index = 0;
 
-	std::cout << "send seq_id of order : " << p.client_seq_id << std::endl;
+			ATPRetCodeType ec = _api->ReqTradeOrderQuery(&p);
+			if (ec != ErrorCode::kSuccess)
+			{
+				write_log(_sink, LL_ERROR, "[TraderATP][{}] Query trades failed: {}", _acctid, ec);
+			}
+			write_log(_sink, LL_INFO, "return num: {}", _return_nums);
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			write_log(_sink, LL_INFO, "return num: {}", _return_nums);
 
-	ATPRetCodeType ec = _api->ReqTradeOrderQuery(&p);
-	if (ec != ErrorCode::kSuccess)
-	{
-		write_log(_sink, LL_ERROR, "[TraderATP] Query trades failed: {}", ec);
-	}
+			if (_return_nums > 100)
+			{
+				// éœ€è¦å¤šé¡µæŸ¥è¯¢
+				if (_return_nums % 100 > 0)
+					_return_nums += 100;
+
+				int times = _return_nums / 100;
+
+				for (int i = 0; i < times; i++)
+				{
+					p.query_index = (i + 1) * 100;
+
+					ec = _api->ReqTradeOrderQuery(&p);
+					if (ec != ErrorCode::kSuccess)
+					{
+						write_log(_sink, LL_ERROR, "[TraderATP][{}] Query trades failed: {}", _acctid, ec);
+					}
+					//std::this_thread::sleep_for(std::chrono::milliseconds(50));
+				}
+			}
+		}
+
+		//std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	});
 
 	return 0;
 }
